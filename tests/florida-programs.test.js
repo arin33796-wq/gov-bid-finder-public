@@ -183,6 +183,15 @@ test("compact cards drop the long detail and a Miami business does not see nonpr
   assert.equal(statusSummary(mine).startsWith("7 open (3 free help)"), true);
 });
 
+test("the section title is the curated label and cards keep the short tag", () => {
+  const page = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const headings = page.match(/Florida &amp; Miami programs \(curated, official links\)/g) || [];
+  assert.equal(headings.length, 2);
+  assert.equal(SOURCE_LABEL, "Florida program");
+  assert.match(programCard(byId("fsbdc-fiu")), /Florida program/);
+  assert.match(programCard(byId("fsbdc-fiu")), /Free help/);
+});
+
 test("the closed toggle stays off until the store says otherwise", () => {
   const mem = new Map();
   const store = { get: (k) => (mem.has(k) ? mem.get(k) : null), set: (k, v) => mem.set(k, v) };
