@@ -80,11 +80,9 @@ const fetchJson = async (file) => {
 };
 
 $("#pill-data").textContent = "loading…";
-// WHY: vendors load alongside the priority file, not after it. The rest of the
-// country is most of the bytes, so that download waits until the tiles are up
-// and does not share a slow connection with the first paint. Cards are built
-// only after the vendor list arrives, or they never get a "Find companies" button.
-const vendorsP = fetch("./vendors.json").then((r) => r.json()).catch(() => ({}));
+// WHY: the priority file is the only snapshot on the first fetch. Vendors and the
+// rest of the country are larger, so both wait until the tiles are up. A card
+// built before the vendor list arrives would have no "Find companies" button.
 let loaded;
 try {
   loaded = await loadSnapshot(fetchJson);
@@ -745,18 +743,13 @@ addEventListener("keydown", (e) => {
 });
 
 // Florida is home: the dashboard opens on it. "All states" is one click away.
-// The vendor list shares the first fetch. The rest of the country does not:
-// that download starts after these tiles, so it cannot take the pipe.
-VENDORS = await vendorsP;
+// Tiles do not need vendors. Start that download only after the paint, or on a
+// slow connection it takes the pipe from the priority file.
 $("#d-state").value = "FL";
 renderDashboard();
+const vendorsP = fetch("./vendors.json").then((r) => r.json()).catch(() => ({}));
 
 updateSavedCount();
-// A link of the form #c=<notice id> opens that contract straight away.
-{
-  const m = location.hash.match(/^#c=(.+)$/);
-  if (m && ROWS.some((r) => r[F.ID] === decodeURIComponent(m[1]))) openDetail(decodeURIComponent(m[1]));
-}
 
 const grantsUI = initGrants({ daysLeft, money, localISODate });
 let agent = null;
@@ -781,10 +774,28 @@ function startAgent() {
 // snapshot arrives would hand back a short count as if it were the whole set.
 if (dataComplete) startAgent();
 else $("#agent-status").textContent = "Loading the rest of the contracts…";
+// The rest of the country starts now, after the tiles, and shares the pipe with
+// the vendor list rather than with the priority file. The agent reads totals off
+// the rows it is given, so it starts only once this merge is whole.
+loaded.finish().then((full) => {
+  if (full?.complete && !dataComplete) adoptFull(full);
+  else if (dataComplete) startAgent();
+  else $("#agent-status").textContent = "The rest of the contracts did not load. Refresh to try again.";
+});
 $("#portal-more-grants").onclick = () => {
   grantsUI.setWho(portal.profile()?.kind === "nonprofit" ? "nonprofit" : "small_business");
   document.querySelector("[data-tab=grants]").click();
 };
+// Cards that offer "Find companies" wait for the vendor list. The dashboard
+// tiles above did not. Refresh a tab the visitor opened during that wait.
+VENDORS = await vendorsP;
+if (currentTab() === "search") runSearch(1);
+if (currentTab() === "foryou") portal.render();
+if (currentTab() === "renewals") initRenewals();
+{
+  const m = location.hash.match(/^#c=(.+)$/);
+  if (m && ROWS.some((r) => r[F.ID] === decodeURIComponent(m[1]))) openDetail(decodeURIComponent(m[1]));
+}
 // Returning visitors land on their portal; first-time visitors get the welcome quiz.
 if (!location.hash && portal.profile()) document.querySelector("[data-tab=foryou]").click();
 portal.maybeGreet();
@@ -825,12 +836,3 @@ function adoptFull(full) {
     if (ROWS.some((r) => r[F.ID] === id)) openDetail(id);
   }
 }
-// Parse the rest only after the dashboard has drawn.
-// The rest file starts here, after the tiles exist, so it does not compete with
-// the priority file. The agent reads totals off the rows it is given, so it
-// starts only once the merge is whole.
-loaded.finish().then((full) => {
-  if (full?.complete && !dataComplete) adoptFull(full);
-  else if (dataComplete) startAgent();
-  else $("#agent-status").textContent = "The rest of the contracts did not load. Refresh to try again.";
-});
