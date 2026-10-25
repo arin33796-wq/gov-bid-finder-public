@@ -4,7 +4,8 @@
 // free local help that fits.
 import { TRADES, CERTS, profileStems, stemMatcher, setAsideAllowed, profileToText, filterGrants } from "./lib.js?v=3";
 import { FL_COUNTIES, countyOf, SOUTH_FLORIDA } from "./florida.js?v=1";
-import { floridaMap } from "./charts.js?v=8";
+import { floridaMap } from "./charts.js?v=9";
+import { floridaOpportunityCounts } from "./county-counts.js?v=1";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -121,14 +122,21 @@ export function initPortal(ctx) {
       ["Grants for you", (myGrants.length || grants.length), myGrants.length ? "match your trade" : `open to ${grantWho === "nonprofit" ? "nonprofits" : "small businesses"}`],
     ].map(([l, v, s]) => `<div class="card tile"><div class="label">${esc(l)}</div><div class="value">${Number(v).toLocaleString()}</div><div class="sub">${esc(s)}</div></div>`).join("");
 
-    // Florida county heatmap of contracts in their trade.
-    const byCounty = {};
-    for (const r of fl) { const c = countyOf(r[F.CITY], ctx.source(r)); if (c) byCounty[c] = (byCounty[c] || 0) + 1; }
-    const unmapped = fl.filter((r) => !countyOf(r[F.CITY], ctx.source(r))).length;
-    $("#portal-map-sub").textContent = `Contracts in your trade, by county. ${p.county !== "outside" ? `${p.county} is outlined. ` : ""}Click a county to see its contracts.${unmapped ? ` ${unmapped} Florida notice${unmapped === 1 ? " names" : "s name"} no city, so ${unmapped === 1 ? "it is" : "they are"} not on the map.` : ""}`;
-    requestAnimationFrame(() => floridaMap($("#portal-map"), byCounty, {
+    // Every open Florida contract is the light layer. Trade matches are darker.
+    const matchedSet = new Set(all);
+    const counts = floridaOpportunityCounts(ctx.rows, {
+      today: ctx.localISODate(),
+      dueOf: (r) => r[F.DUE],
+      isFlorida: (r) => r[F.STATE] === "FL",
+      countyOf: (r) => countyOf(r[F.CITY], ctx.source(r)),
+      isMatch: (r) => matchedSet.has(r),
+    });
+    const unmapped = counts.unmapped;
+    $("#portal-map-sub").textContent = `Light orange counts every open contract. Darker orange counts your trade. The outlined number is the open count. ${p.county !== "outside" ? `${p.county} is outlined. ` : ""}Click a county to see its contracts.${unmapped ? ` ${unmapped} open Florida notice${unmapped === 1 ? " names" : "s name"} no city, so ${unmapped === 1 ? "it is" : "they are"} not on the map.` : ""}`;
+    requestAnimationFrame(() => floridaMap($("#portal-map"), counts.matched, {
+      base: counts.open,
       selected: countyFilter || (p.county !== "outside" ? p.county : ""),
-      valueLabel: "open contracts in your trade", ariaLabel: "Open contracts in your trade by Florida county",
+      ariaLabel: "Opportunities in Florida by county",
       onClick: (c) => { countyFilter = countyFilter === c ? "" : c; render(); $("#portal-list").scrollIntoView({ behavior: "smooth", block: "start" }); },
     }));
 
