@@ -27,8 +27,15 @@
   <h2>Governments buy ordinary things.<br><span class="accent">Almost nobody bids.</span></h2>
   <div class="stats">
     <div><b data-stat="open">…</b><span>government contracts open right now</span></div>
-    <div><b data-stat="median">…</b><span>typical award in those industries</span></div>
-    <div><b>$1.4k–29k</b><span>a year for the tools that find them</span></div>
+    <div><b data-stat="median">…</b><span>median typical award for these notices' industries</span></div>
+    <!-- WHY $1,900: one seat, per year, on GovTribe's own plan table (the GovTribe
+         column, not GovTribe Pro, which is $2,100 for one seat). Fetched 2026-10-25
+         from https://govtribe.com/docs/govtribe-user-guide/guides/choose-the-right-govtribe-plan
+         GovSpend's FAQ the same day says it does not publish a standard price:
+         https://govspend.com/faq/
+         Deltek does not list a GovWin price on https://www.govwin.com/ or
+         https://www.deltek.com/products/govwin/federal/ (fetched the same day). -->
+    <div><b>$1,900</b><span>a year for one seat on the GovTribe plan. GovSpend and GovWin don't list a price.</span></div>
   </div>
   <p class="big muted">Painting, landscaping, janitorial, roofing, catering. The work is ordinary. Finding it is not. Every notice is a wall of paperwork on a different website, and the search tools are priced for companies that already have a bid team.</p>
 </section>
@@ -37,12 +44,12 @@
   <p class="kicker">Why Miami</p>
   <h2>The money is here. The bidders aren't.</h2>
   <div class="stats">
-    <div><b data-stat="mdcBids">…</b><span>Miami-Dade County bids open right now, live from the county</span></div>
+    <div><b data-stat="mdcBids">…</b><span>Miami-Dade County bids open right now, from the county's own feed</span></div>
     <div><b data-stat="fl">…</b><span>open government contracts with work in Florida</span></div>
     <div><b data-stat="flRenewValue">…</b><span>in Florida federal contracts expiring within a year</span></div>
-    <div><b data-stat="grants">…</b><span>federal grants open to small businesses and nonprofits</span></div>
+    <div><b data-stat="grants">…</b><span>open federal grants, research awards hidden</span></div>
   </div>
-  <p class="big muted">Parks pool repairs, a fire station's doors, a summer food program: this is ordinary work a Miami firm can do. The county even names the buyer on work it plans to buy. Most small businesses never see it.</p>
+  <p class="big muted" id="miami-lead">Ordinary work a Miami firm can do. Most small businesses never see it.</p>
 </section>
 
 <section class="slide" data-title="Map">
@@ -58,7 +65,7 @@
     <li><b>Listen</b><span>A five-question welcome quiz, or one plain sentence: trade, county, size, certifications.</span></li>
     <li><b>Search &amp; read</b><span>Their county first, then Florida: <em data-stat="open">…</em> open contracts and <em data-stat="grants">…</em> grants. It reads the promising ones and rules out set-asides they can't bid on.</span></li>
     <li><b>Check the field</b><span>It sees who already wins this work among <em data-stat="companies">…</em> companies, and which contracts expire soon.</span></li>
-    <li><b>Act, with approval</b><span>It saves its picks and drafts the email to the buyer. The owner approves, and it lands in their Gmail as a draft.</span></li>
+    <li><b>Act, with approval</b><span>It saves its picks and drafts the email to the buyer. The owner can edit it, copy it, or save it as a Gmail draft. Nothing is sent until they send it.</span></li>
   </ol>
   <p class="big muted">Claude decides which tools to call and in what order. The page shows every step it takes, and nothing leaves without a person's click.</p>
 </section>
@@ -67,12 +74,15 @@
   <p class="kicker">How it's built</p>
   <h2>Claude does the reasoning. Public data does the rest.</h2>
   <ol class="flow">
-    <li><b>Live public data</b><span>Every open federal notice from the SAM.gov daily extract, Miami-Dade County's own bid feeds, Florida state solicitations, Grants.gov, and USAspending award history.</span></li>
+    <li><b>Live public data</b><span>Open federal notices from the SAM.gov daily extract, Miami-Dade County's own bid feeds, Florida state solicitations, Grants.gov, and USAspending award history.</span></li>
     <li><b>An agent with 7 tools</b><span>Claude decides which to call: search contracts, read one, find competitors, find expiring work, search grants, save to the shortlist, propose an email.</span></li>
-    <li><b>Action, with approval</b><span>The buyer email lands in the owner's Gmail as a draft through Claude's Gmail connector, only after they click.</span></li>
-    <li><b>Text it</b><span>Owners can text their personal AI agent. It writes the question to a shared Google Doc, and govbid answers there within five minutes.</span></li>
+    <li><b>Action, with approval</b><span>The owner can save the buyer email as a Gmail draft through Claude's Gmail connector, only after they click. Nothing is sent from this page.</span></li>
+    <!-- WHY 5 to 10 minutes: the text path is a scheduled job on one computer, so a
+         reply is not instant. That is the range to say; one checked run was faster. -->
+    <li><b>Text it</b><span>Owners can text their personal AI agent. It writes the question to a shared Google Doc, and govbid answers there in 5 to 10 minutes.</span></li>
   </ol>
-  <p class="big muted">Plain JavaScript, no framework. 33 automated tests. Map outlines drawn from US Census boundaries.</p>
+  <!-- WHY 34: node --test reports 34 tests in tests/*.test.js on 2026-10-25, after the Miami-example test. Re-count if a test is added. -->
+  <p class="big muted">Plain JavaScript, no framework. 34 automated tests. Map outlines drawn from US Census boundaries.</p>
 </section>
 
 <section class="slide" data-title="Demo">
@@ -82,7 +92,7 @@
     <li>Type the business in one sentence</li>
     <li>Watch it <b>search, read and compare</b>, live</li>
     <li>It saves its <b>top picks</b> and drafts the <b>buyer email</b></li>
-    <li>Approve, and the draft lands in <b>Gmail</b></li>
+    <li>Approve, then copy it or save a <b>Gmail</b> draft</li>
   </ol>
   <a class="btn lg" href="./#agent">Open the agent</a>
 </section>
@@ -92,9 +102,10 @@
   <h2>Search is free. The agent working for you is not.</h2>
   <div class="tiers">
     <div class="card"><span class="badge free">Free</span><h3>Search everything</h3><p>Public data stays public. Anyone can search, map and track contracts. This is how people find us.</p></div>
-    <div class="card paid"><span class="badge">$99 / month</span><h3>The agent works for you</h3><p>Matched contracts in your trade every week, the buyer contacted in your name, and a warning before work you could take over expires.</p></div>
+    <div class="card paid"><span class="badge">$99 / month</span><h3>The agent works for you</h3><p>Matched contracts in your trade every week, a buyer email you approve before anything is sent, and a warning before work you could take over expires.</p></div>
   </div>
-  <p class="muted">A flat subscription, never a cut of the contract: federal rules (FAR 52.203-5) restrict fees that depend on winning. Competitors charge $1,350 to $29,000 a year and sell to companies that already bid. General personal agents like Instinct do errands for anyone; this one does one job, government contracting, for the businesses those tools ignore.</p>
+  <!-- Same sourced prices as slide 2: $1,900 for one GovTribe seat, $2,100 for one Pro seat, fetched 2026-10-25. -->
+  <p class="muted">A flat subscription, never a cut of the contract: federal rules (FAR 52.203-5) restrict fees that depend on winning. GovTribe lists $1,900 a year for one seat on the GovTribe plan, and $2,100 on Pro. GovSpend and GovWin don't publish a price. General personal agents like Instinct do errands for anyone; this one does one job, government contracting, for the businesses those tools ignore.</p>
 </section>
 
 <section class="slide" data-title="Rollout">
@@ -111,7 +122,7 @@
   <p class="kicker">Impact</p>
   <h2>We count one thing: <span class="accent">dollars won by local businesses.</span></h2>
   <p class="big">Every contract a Miami small business wins is public money that stays in Miami: payroll, jobs, and a track record that makes the next bid easier.</p>
-  <p class="big muted">It points every business to free local help: the Florida APEX Accelerator at FIU, Miami-Dade SBE certification, and the county supplier portal. The agent answers in the owner's own language: English, Spanish or Haitian Creole. Next: City of Miami, Miami-Dade schools and Water &amp; Sewer feeds, and texting the agent.</p>
+  <p class="big muted">It points every business to free local help: the Florida APEX Accelerator at FIU, Miami-Dade SBE certification, and the county supplier portal. The agent answers in the owner's own language: English, Spanish or Haitian Creole. Next: City of Miami, Miami-Dade schools and Water &amp; Sewer feeds.</p>
   <p class="foot">govbid · thank you</p>
 </section>
 
@@ -122,6 +133,6 @@
   <a class="icon-btn" href="./">Back to app</a>
 </nav>
 <div class="tooltip" id="tip"></div>
-<script type="module" src="./pitch.js?v=7"></script>
+<script type="module" src="./pitch.js?v=8"></script>
 </body>
 </html>
