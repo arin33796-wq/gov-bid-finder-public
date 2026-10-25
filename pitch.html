@@ -65,9 +65,9 @@
     <li><b>Listen</b><span>A five-question welcome quiz, or one plain sentence: trade, county, size, certifications.</span></li>
     <li><b>Search &amp; read</b><span>Their county first, then Florida: <em data-stat="open">…</em> open contracts and <em data-stat="grants">…</em> grants. It reads the promising ones and rules out set-asides they can't bid on.</span></li>
     <li><b>Check the field</b><span>It sees who already wins this work among <em data-stat="companies">…</em> companies, and which contracts expire soon.</span></li>
-    <li><b>Act, with approval</b><span>It saves its picks and drafts the email to the buyer. The owner can edit it, copy it, or save it as a Gmail draft. Nothing is sent until they send it.</span></li>
+    <li><b>Act, with approval</b><span>It saves its picks and drafts the email to the buyer. It can be saved as a Gmail draft (one click, after approval).</span></li>
   </ol>
-  <p class="big muted">Claude decides which tools to call and in what order. The page shows every step it takes, and nothing leaves without a person's click.</p>
+  <p class="big muted">Claude decides which tools to call and in what order. The page shows every step it takes.</p>
 </section>
 
 <section class="slide" data-title="Tech">
@@ -76,10 +76,12 @@
   <ol class="flow">
     <li><b>Live public data</b><span>Open federal notices from the SAM.gov daily extract, Miami-Dade County's own bid feeds, Florida state solicitations, Grants.gov, and USAspending award history.</span></li>
     <li><b>An agent with 7 tools</b><span>Claude decides which to call: search contracts, read one, find competitors, find expiring work, search grants, save to the shortlist, propose an email.</span></li>
-    <li><b>Action, with approval</b><span>The owner can save the buyer email as a Gmail draft through Claude's Gmail connector, only after they click. Nothing is sent from this page.</span></li>
-    <!-- WHY 5 to 10 minutes: the text path is a scheduled job on one computer, so a
-         reply is not instant. That is the range to say; one checked run was faster. -->
-    <li><b>Text it</b><span>Owners can text their personal AI agent. It writes the question to a shared Google Doc, and govbid answers there in 5 to 10 minutes.</span></li>
+    <li><b>Action, with approval</b><span>The buyer email can be saved as a Gmail draft (one click, after approval).</span></li>
+    <!-- WHY 5 to 10 minutes: the relay is a scheduled job on one computer, so a
+         reply is not instant. That is the range to say; one checked run was faster.
+         WHY "Next": there is no govbid phone number and no Twilio account in this
+         product today. The line names a later step, not something that exists now. -->
+    <li><b>Text relay</b><span>Texting runs through a personal AI agent that edits a shared doc, which govbid reads and answers in 5 to 10 minutes. Next: a govbid Twilio number.</span></li>
   </ol>
   <!-- WHY 34: node --test reports 34 tests in tests/*.test.js on 2026-10-25, after the Miami-example test. Re-count if a test is added. -->
   <p class="big muted">Plain JavaScript, no framework. 34 automated tests. Map outlines drawn from US Census boundaries.</p>
@@ -92,7 +94,7 @@
     <li>Type the business in one sentence</li>
     <li>Watch it <b>search, read and compare</b>, live</li>
     <li>It saves its <b>top picks</b> and drafts the <b>buyer email</b></li>
-    <li>Approve, then copy it or save a <b>Gmail</b> draft</li>
+    <li>It can be saved as a <b>Gmail</b> draft (one click, after approval)</li>
   </ol>
   <a class="btn lg" href="./#agent">Open the agent</a>
 </section>
@@ -102,7 +104,7 @@
   <h2>Search is free. The agent working for you is not.</h2>
   <div class="tiers">
     <div class="card"><span class="badge free">Free</span><h3>Search everything</h3><p>Public data stays public. Anyone can search, map and track contracts. This is how people find us.</p></div>
-    <div class="card paid"><span class="badge">$99 / month</span><h3>The agent works for you</h3><p>Matched contracts in your trade every week, a buyer email you approve before anything is sent, and a warning before work you could take over expires.</p></div>
+    <div class="card paid"><span class="badge">$99 / month</span><h3>The agent works for you</h3><p>Matched contracts in your trade every week, a buyer email that can be saved as a Gmail draft (one click, after approval), and a warning before work you could take over expires.</p></div>
   </div>
   <!-- Same sourced prices as slide 2: $1,900 for one GovTribe seat, $2,100 for one Pro seat, fetched 2026-10-25. -->
   <p class="muted">A flat subscription, never a cut of the contract: federal rules (FAR 52.203-5) restrict fees that depend on winning. GovTribe lists $1,900 a year for one seat on the GovTribe plan, and $2,100 on Pro. GovSpend and GovWin don't publish a price. General personal agents like Instinct do errands for anyone; this one does one job, government contracting, for the businesses those tools ignore.</p>
@@ -112,7 +114,7 @@
   <p class="kicker">How we roll it out</p>
   <h2>Start by hand. Then let it run.</h2>
   <ol class="flow three">
-    <li><b>Month 1</b><span>We run the agent ourselves for 10 Miami contractors, review every email, and send them one real contract each. Free.</span></li>
+    <li><b>Month 1</b><span>We run the agent ourselves for 10 Miami contractors, review every draft with them, and show each one real contract. Free.</span></li>
     <li><b>Month 2–3</b><span>The ones who bid become the first $99 subscribers. We track bids submitted and contracts won.</span></li>
     <li><b>Then</b><span>Self-serve: a contractor signs up with their trade and zip code, and the agent runs on its own with their approval.</span></li>
   </ol>
