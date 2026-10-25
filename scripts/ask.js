@@ -5,18 +5,40 @@
 // the answer back.
 //
 //   node scripts/ask.js --trade "painting" [--county Miami-Dade] [--who small_business] [--limit 3]
+//   node scripts/ask.js --parse <file>     or    --parse -     to read stdin
+// --parse prints validated portal commands as JSON and does not search.
+// It is not wired into the relay. DRAFT in that JSON is a draft for a person
+// to approve; this script never sends it.
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { F, decodeRow } from "./sam-lib.js";
 import { localISODate, daysBetween, stemMatcher, filterGrants, TRADES } from "../lib.js";
 import { countyOf, SOUTH_FLORIDA } from "../florida.js";
+import { parseCommands } from "./commands.js";
 
 const { values: a } = parseArgs({ options: {
   trade: { type: "string", default: "" }, county: { type: "string", default: "Miami-Dade" },
   who: { type: "string", default: "small_business" }, limit: { type: "string", default: "3" },
   data: { type: "string", default: new URL("../data.json", import.meta.url).pathname },
   grants: { type: "string", default: new URL("../grants.json", import.meta.url).pathname },
+  parse: { type: "string" },
 } });
+
+// Only the new flag takes this branch. Current flags fall through unchanged.
+if (a.parse !== undefined) {
+  try {
+    if (a.parse === "") throw new Error("Usage: node scripts/ask.js --parse <file> or --parse -");
+    const text = a.parse === "-" ? readFileSync(0, "utf8") : readFileSync(a.parse, "utf8");
+    let data;
+    try { data = JSON.parse(readFileSync(a.data, "utf8")); }
+    catch (err) { throw new Error(`Could not read contract data: ${err instanceof Error ? err.message : String(err)}`); }
+    console.log(JSON.stringify(parseCommands(text, { data }), null, 2));
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+  process.exit(0);
+}
 
 // A trade name from the quiz list maps to its stems; anything else is used as typed.
 const words = a.trade.toLowerCase().split(/[,;]/).map((s) => s.trim()).filter(Boolean);
