@@ -292,10 +292,16 @@ rect.today{stroke:var(--series-1);stroke-width:1.5}
 @media (max-width: 1180px){
   header.top{flex-wrap:wrap;row-gap:6px}
   .spacer{display:none}
+  /* WHY order 1 then 2: the theme button followed the pill in the markup, so on a
+     375px row the pill took the leftover width and the theme sat on a row by itself. */
+  #theme-toggle{order:1;flex:0 0 auto}
+  .pitch-btn{order:3;flex:0 0 auto}
   nav.tabs{order:5;flex:1 0 100%;min-width:0;max-width:100%;overflow-x:auto;scrollbar-width:thin;gap:0;padding-bottom:2px}
   nav.tabs button{white-space:nowrap}
   nav.tabs button[aria-selected="true"]::after{bottom:0}
-  #pill-data{flex:1 1 auto;min-width:0;max-width:42vw;overflow:hidden;text-overflow:ellipsis}
+  /* WHY flex-basis 0: a content-sized pill filled the first row and pushed the
+     theme button down. It grows into whatever space brand and theme leave. */
+  #pill-data{order:2;flex:1 1 0;min-width:0;max-width:42vw;overflow:hidden;text-overflow:ellipsis}
 }
 /* WHY 1181: one line once brand, pill, pitch, theme and the tabs fit together.
    WHY 9px / 160px: 12px of tab padding plus a full pill clipped About near 1280. */
