@@ -5,8 +5,10 @@
 //
 // Run after build-sam.js. If the county site fails, the previous county rows stay.
 import { readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { parseArgs } from "node:util";
 import { decodeRow, encodeRows, tallyBySource } from "./sam-lib.js";
+import { writeSplitFiles } from "./split-data.js";
 import { MDC_CURRENT_URL, MDC_FUTURE_URL, currentToRow, futureToRow } from "./county-lib.js";
 import { localISODate } from "../lib.js";
 
@@ -39,4 +41,5 @@ const { rows, dicts } = encodeRows(all);
 data.rows = rows;
 data.meta = { ...data.meta, dicts, total: all.length, by_source: tallyBySource(all), county_built_at: new Date().toISOString() };
 writeFileSync(args.data, JSON.stringify(data));
-console.log(`Miami-Dade: ${current.length} current and ${future.length} future solicitations, ${fresh.length} still open; ${all.length.toLocaleString()} rows total.`);
+const split = writeSplitFiles(data, dirname(args.data));
+console.log(`Miami-Dade: ${current.length} current and ${future.length} future solicitations, ${fresh.length} still open; ${all.length.toLocaleString()} rows total (${split.first.toLocaleString()} load first, ${split.rest.toLocaleString()} after).`);

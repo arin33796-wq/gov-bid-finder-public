@@ -8,8 +8,10 @@
 // snapshot while still open. Award history (value benchmarks, awards_by_month,
 // NAICS names) is carried over too: it changes slowly and comes from USAspending.
 import { createReadStream, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { parseArgs } from "node:util";
 import { F, CsvParser, cleanText, deadlineDate, isUS, simplicity, score, decodeRow, encodeRows, tallyBySource } from "./sam-lib.js";
+import { writeSplitFiles } from "./split-data.js";
 import { localISODate } from "../lib.js";
 
 const { values: args } = parseArgs({ options: {
@@ -84,4 +86,5 @@ const out = {
   rows: encoded,
 };
 writeFileSync(args.data, JSON.stringify(out));
-console.log(`Read ${seen.toLocaleString()} notices; ${fresh.size.toLocaleString()} federal open as of ${today}; carried ${carried.length} state/county rows; wrote ${all.length.toLocaleString()} rows to ${args.data}.`);
+const split = writeSplitFiles(out, dirname(args.data));
+console.log(`Read ${seen.toLocaleString()} notices; ${fresh.size.toLocaleString()} federal open as of ${today}; carried ${carried.length} state/county rows; wrote ${all.length.toLocaleString()} rows to ${args.data} (${split.first.toLocaleString()} load first, ${split.rest.toLocaleString()} after).`);
