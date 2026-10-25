@@ -7,11 +7,17 @@ export const DETAIL_URL = "https://api.grants.gov/v1/api/fetchOpportunity";
 
 // Grants.gov applicant-type codes for the people this site serves. Governments and
 // universities are left out on purpose: they have grant offices already.
+// 99 is "open to any applicant type", so a small business, nonprofit, or
+// individual may apply; filters treat that group as open to all three.
+// 25 is not those audiences. Grants.gov uses it when eligibility is only in
+// the listing text, so it stays its own group and is not implied for them.
 export const ELIGIBILITY = {
   "23": "small_business",
   "12": "nonprofit",      // 501(c)(3)
   "13": "nonprofit",      // nonprofit without 501(c)(3)
   "21": "individual",
+  "25": "other",          // Others: who may apply is only in the listing text
+  "99": "unrestricted",   // any applicant type, including the three above
 };
 
 // "11/17/2026" -> "2026-11-17"; "" stays "" (forecasts often have no close date yet).

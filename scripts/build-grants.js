@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Build grants.json: federal grants open to small businesses, nonprofits and
-// individuals, from the Grants.gov public API.
+// individuals, plus Grants.gov "Unrestricted" (any applicant) and "Others"
+// (eligibility is in the listing text), from the Grants.gov public API.
 //
 //   node scripts/build-grants.js [--out grants.json] [--today YYYY-MM-DD]
 import { writeFileSync, existsSync } from "node:fs";
@@ -15,8 +16,9 @@ const today = args.today || localISODate();
 // or two without hammering a public government API.
 const CONCURRENCY = 6;
 const TIMEOUT_MS = 30_000;
-// WHY 5000: larger than any single eligibility's hit count (~860 today), so one
-// request returns every grant for that applicant type.
+// WHY 5000: larger than any single eligibility's hit count (about 1,100 for
+// "Others" on 2026-10-25; the next largest is under 900), so one request
+// returns every grant for that applicant type.
 const ROWS = 5000;
 
 async function post(url, body) {

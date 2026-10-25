@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { profileStems, setAsideAllowed, profileToText, isResearchGrant, filterGrants, TRADES } from "../lib.js";
 import { usDate, currentToRow, futureToRow } from "../scripts/county-lib.js";
-import { mdy, toGrant, stillOpen } from "../scripts/grants-lib.js";
+import { mdy, toGrant, stillOpen, ELIGIBILITY } from "../scripts/grants-lib.js";
 
 test("profileStems turns quiz trades and free text into search stems", () => {
   assert.deepEqual(profileStems({ trades: ["painting", "roofing"] }), ["paint", "roof"]);
@@ -54,6 +54,38 @@ test("Miami-Dade feed records become rows", () => {
   const fut = futureToRow({ webPostingCounter: 8984, documentTitle: "Water Remediation Pool", removalDate: "11/10/2026 12:00:00 AM", releaseDate: "10/20/2026 12:00:00 AM", sendFeedBack: " Julie Whiteside", emailAddress: " julie@miamidade.gov" });
   assert.equal(fut.TYPE, "Future Solicitation"); assert.equal(fut.DUE, "2026-11-10");
   assert.equal(fut.EMAIL, "julie@miamidade.gov"); assert.equal(fut.CNAME, "Julie Whiteside");
+});
+
+test("Others and Unrestricted stay honest about who can apply", () => {
+  assert.equal(ELIGIBILITY["25"], "other");
+  assert.equal(ELIGIBILITY["99"], "unrestricted");
+  const unrestricted = { title: "Open call", agency: "National Endowment for the Arts", desc: "any applicant", categories: ["Arts"], eligible: ["unrestricted"], closes: "2026-12-01" };
+  const others = { title: "Read the listing", agency: "National Endowment for the Arts", desc: "see text", categories: ["Arts"], eligible: ["other"], closes: "2026-12-01" };
+  const shop = { title: "Shop tools", agency: "Small Business Administration", desc: "equipment", categories: ["Commerce"], eligible: ["small_business"], closes: "2026-12-01" };
+  const rows = [unrestricted, others, shop];
+  const titles = (who, extra) => filterGrants(rows, { who, hideResearch: false, ...extra }).map((g) => g.title);
+
+  // Code 99 is open to any applicant type, so the named filters include it.
+  assert.deepEqual(titles("small_business"), ["Open call", "Shop tools"]);
+  assert.deepEqual(titles("nonprofit"), ["Open call"]);
+  assert.deepEqual(titles("individual"), ["Open call"]);
+  assert.deepEqual(titles("unrestricted"), ["Open call"]);
+  // Code 25 is not a promise that a small business, nonprofit, or individual can apply.
+  assert.deepEqual(titles("other"), ["Read the listing"]);
+  assert.deepEqual(titles(""), ["Open call", "Read the listing", "Shop tools"]);
+  assert.deepEqual(titles("small_business", { today: "2026-12-02" }), []);
+
+  const both = { title: "Named and open", agency: "Department of Agriculture", desc: "food", categories: ["Food"], eligible: ["small_business", "unrestricted"], closes: "2026-12-01" };
+  assert.equal(filterGrants([both], { who: "nonprofit", hideResearch: false }).length, 1);
+  assert.equal(filterGrants([both], { who: "small_business", hideResearch: false }).length, 1);
+
+  const lab = { title: "Mind and body (R01 Clinical Trial Required)", agency: "National Institutes of Health", desc: "", categories: ["Health"], eligible: ["unrestricted"], closes: "2026-12-01" };
+  assert.equal(filterGrants([lab], { who: "small_business" }).length, 0);
+  assert.equal(filterGrants([lab], { who: "small_business", hideResearch: false }).length, 1);
+
+  // The record keeps the source group. The filter, not a rewritten label, opens it up.
+  assert.deepEqual(toGrant({ id: 99, title: "Open", oppStatus: "posted", closeDate: "12/01/2026" }, ["unrestricted"], {}).eligible, ["unrestricted"]);
+  assert.deepEqual(toGrant({ id: 25, title: "See text", oppStatus: "posted", closeDate: "12/01/2026" }, ["other"], {}).eligible, ["other"]);
 });
 
 test("Grants.gov hits become grants", () => {

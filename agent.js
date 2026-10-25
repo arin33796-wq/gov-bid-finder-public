@@ -4,7 +4,7 @@
 // work, saves picks to the shortlist, and proposes buyer emails. Anything that
 // leaves the page (a Gmail draft) waits for the person to press a button.
 
-import { profileToText, filterGrants, stemMatcher } from "./lib.js?v=3";
+import { profileToText, filterGrants, stemMatcher } from "./lib.js?v=4";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -141,15 +141,15 @@ export function initAgent(ctx) {
     },
     {
       name: "search_grants",
-      description: "Search open federal grants (from Grants.gov) that small businesses, nonprofits or individuals may apply for. Research grants for labs are excluded. Returns title, agency, close date, award ceiling and link.",
+      description: "Search open federal grants (from Grants.gov) that small businesses, nonprofits or individuals may apply for. Unrestricted grants are included for those groups. Research grants for labs are excluded. Returns title, agency, close date, award ceiling and link.",
       inputSchema: { type: "object", properties: {
         keywords: { type: "array", items: { type: "string" }, description: "1-4 words about their work or mission, e.g. 'food', 'youth', 'workforce'" },
-        who: { type: "string", enum: ["small_business", "nonprofit", "individual"], description: "Who is applying" },
+        who: { type: "string", enum: ["small_business", "nonprofit", "individual", "unrestricted", "other"], description: "Who is applying. other means the listing states eligibility; do not treat it as a small business grant." },
       }, required: ["keywords"] },
       async execute(input) {
         const all = await ctx.grants();
         const kws = (Array.isArray(input.keywords) ? input.keywords : [input.keywords]).map((k) => String(k).toLowerCase()).filter(Boolean).slice(0, 4);
-        const who = ["small_business", "nonprofit", "individual"].includes(input.who) ? input.who : "";
+        const who = ["small_business", "nonprofit", "individual", "unrestricted", "other"].includes(input.who) ? input.who : "";
         const pool = filterGrants(all, { who, today: ctx.localISODate() });
         const fits = stemMatcher(kws);
         const hits = pool.filter((g) => fits(`${g.title} ${g.desc} ${g.categories.join(" ")}`.toLowerCase()));

@@ -1,10 +1,20 @@
-// The Grants tab: federal grants open to small businesses, nonprofits and
-// individuals, from grants.json (built daily from Grants.gov).
-import { filterGrants } from "./lib.js?v=3";
+// The Grants tab: federal grants from grants.json (built daily from Grants.gov).
+// Unrestricted grants are open to any applicant. "Others" only means the
+// listing itself says who may apply.
+import { filterGrants } from "./lib.js?v=4";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const WHO = { small_business: "Small businesses", nonprofit: "Nonprofits", individual: "Individuals" };
+const WHO = {
+  small_business: "Small businesses",
+  nonprofit: "Nonprofits",
+  individual: "Individuals",
+  // WHY not "Small businesses": code 99 is open to any applicant type. The tag
+  // has to say that, or a small-business filter looks like the listing named them.
+  unrestricted: "Unrestricted",
+  // WHY "Others": code 25 means "see the listing", not a group we can vouch for.
+  other: "Others",
+};
 // Grants.gov's catch-all category label runs to a sentence; shorten it on screen.
 const catLabel = (c) => c.startsWith("Other (see text") ? "Other" : c;
 

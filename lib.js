@@ -124,11 +124,18 @@ export function profileToText(p) {
 const RESEARCH_RE = /\b(R0[0-9]|R1[0-9]|R2[0-9]|R3[0-9]|R4[0-9]|R6[01]|U0[0-9]|U2[0-9]|U4[0-9]|UG3|UH3|K0[0-9]|K2[0-9]|P0[0-9]|P2[0-9]|P5[0-9]|F3[0-9]|T3[0-9]|SBIR|STTR)\b|clinical trial/i;
 export const isResearchGrant = (g) => RESEARCH_RE.test(g.title) || /national institutes of health/i.test(g.agency);
 
+// WHY these three: they are the applicant groups the Grants tab, the portal
+// and the text relay already filter on. Grants.gov code 99 ("unrestricted" in
+// scripts/grants-lib.js) is open to any applicant type, so each of these may
+// apply. "other" (code 25) is absent on purpose: that code only means the
+// listing text says who may apply, and implying a small business can is a lie.
+const UNRESTRICTED_OPENS = ["small_business", "nonprofit", "individual"];
+
 export function filterGrants(grants, { who = "", category = "", q = "", hideResearch = true, today = "" } = {}) {
   const terms = String(q).toLowerCase().split(/\s+/).filter(Boolean);
   return grants.filter((g) => {
     if (today && g.closes && g.closes < today) return false;
-    if (who && !g.eligible.includes(who)) return false;
+    if (who && !g.eligible.includes(who) && !(g.eligible.includes("unrestricted") && UNRESTRICTED_OPENS.includes(who))) return false;
     if (category && !g.categories.includes(category)) return false;
     if (hideResearch && isResearchGrant(g)) return false;
     if (terms.length) { const h = `${g.title} ${g.desc} ${g.agency} ${g.categories.join(" ")}`.toLowerCase(); if (!terms.every((t) => h.includes(t))) return false; }
