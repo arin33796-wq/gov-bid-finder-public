@@ -5,6 +5,7 @@
 import { TRADES, CERTS, profileStems, setAsideAllowed, profileToText, filterGrants, noticeMatchesTrade, grantMatchesTrade, emptyMatchAdvice } from "./lib.js?v=6";
 import { FL_COUNTIES, countyOf, SOUTH_FLORIDA } from "./florida.js?v=1";
 import { floridaMap } from "./charts.js?v=9";
+import { loadFloridaPrograms, renderLists, verifiedPrograms, closedShown, toggleClosedShown, fitsProfile } from "./florida-programs.js?v=2";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -259,6 +260,7 @@ export function initPortal(ctx) {
       }));
       wireEmpty(grantHost);
     }
+    renderPortalFlorida();
 
     const certs = new Set(p.certs || []);
     $("#portal-help").innerHTML = HELP.filter((h) => !h.unless || !certs.has(h.unless))
@@ -275,6 +277,42 @@ export function initPortal(ctx) {
     document.querySelector("[data-tab=agent]")?.click();
     const note = $("#agent-unavailable");
     if (note && !note.hidden) note.scrollIntoView({ block: "nearest" });
+  };
+
+  // Separate from filterGrants / #portal-grants. Closed programs stay behind the
+  // toggle until the visitor asks, and the choice is kept with the store helper.
+  let flTicket = 0;
+  function paintPortalFlorida(data, who) {
+    const programs = verifiedPrograms(data).filter((p) => fitsProfile(p, who));
+    const show = closedShown(ctx.store);
+    const view = renderLists(programs, { compact: true });
+    const lead = $("#portal-fl-lead");
+    if (!lead) return;
+    lead.textContent = programs.length
+      ? `${view.verified ? view.verified + " " : ""}Programs that fit this profile. Not part of the Grants.gov list.`
+      : "Florida programs could not be loaded.";
+    $("#portal-fl-count").textContent = programs.length ? `${programs.length} programs: ${view.summary}.` : "";
+    $("#portal-fl").innerHTML = view.activeHtml || (programs.length ? '<div class="empty small">Nothing here is accepting applications for this profile.</div>' : "");
+    const closedHost = $("#portal-fl-closed");
+    const toggle = $("#portal-fl-toggle");
+    toggle.hidden = view.closedCount === 0;
+    toggle.textContent = show ? "Hide closed programs" : `Show ${view.closedCount} closed programs`;
+    toggle.setAttribute("aria-expanded", show ? "true" : "false");
+    closedHost.innerHTML = view.closedHtml;
+    closedHost.hidden = !show || view.closedCount === 0;
+  }
+  function renderPortalFlorida() {
+    const ticket = ++flTicket;
+    const who = profile;
+    loadFloridaPrograms().then((data) => {
+      if (ticket !== flTicket) return;
+      paintPortalFlorida(data, who);
+    });
+  }
+  $("#portal-fl-toggle").onclick = () => { toggleClosedShown(ctx.store); renderPortalFlorida(); };
+  $("#portal-fl-all").onclick = () => {
+    document.querySelector("[data-tab=grants]").click();
+    requestAnimationFrame(() => $("#fl-programs")?.scrollIntoView({ block: "start" }));
   };
 
   return {

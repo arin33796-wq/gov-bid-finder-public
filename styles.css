@@ -378,3 +378,34 @@ rect.today{stroke:var(--series-1);stroke-width:1.5}
 .mail-box input,.mail-box textarea{width:100%;background:var(--surface-1);border:1px solid var(--border);border-radius:var(--radius);padding:9px;margin-top:4px;font-size:13.5px}
 .mail-box textarea{min-height:190px;font-family:inherit}
 .mail-box label{font-family:var(--font-mono);font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+
+/* Florida & Miami programs. Not Grants.gov cards, so they do not use .opp. */
+.fl-programs{margin-top:8px;padding-top:4px;min-width:0;max-width:100%;scroll-margin-top:128px}
+#federal-grants{scroll-margin-top:128px}
+.fl-programs .section-head h2{font-size:clamp(22px,6vw,28px)}
+.fl-card{min-width:0;padding:16px 2px 16px 12px;border-bottom:1px solid var(--border);overflow-wrap:anywhere}
+.fl-card h3{margin:0 0 8px;font-size:16px;font-weight:600;line-height:1.35}
+.fl-card .meta{row-gap:4px}
+.fl-status,.fl-kind.is-help,.fl-kind.is-loan,.fl-source{font-weight:700}
+.fl-status.is-open,.fl-status.is-rolling{color:var(--good)}
+.fl-status.is-unclear{color:var(--warning)}
+.fl-status.is-closed,.fl-status.is-canceled{color:var(--critical)}
+.fl-kind.is-help{color:var(--series-1)}
+.fl-kind.is-loan{color:var(--warning)}
+.fl-card[data-status="open"],.fl-card[data-status="rolling"]{box-shadow:inset 3px 0 0 var(--good)}
+.fl-card[data-status="unclear"]{box-shadow:inset 3px 0 0 var(--warning)}
+.fl-card[data-status="closed"]{box-shadow:inset 3px 0 0 var(--critical)}
+.fl-card[data-status="closed"] h3{color:var(--text-secondary)}
+.fl-admin,.fl-deadline,.fl-amount,.fl-notes,.fl-verified{margin:8px 0 0;font-size:13.5px;color:var(--text-secondary)}
+.fl-amount{color:var(--text-primary);font-weight:600}
+.fl-extra{font-size:13px;align-self:center}
+.fl-more{margin-top:12px}
+#portal-fl.fl-compact{display:grid;grid-template-columns:1fr 1fr;column-gap:28px;border-top:0}
+#portal-fl.fl-compact .fl-card{border-top:1px solid var(--border)}
+@media (max-width:760px){
+  .fl-card h3{font-size:15px}
+  .fl-programs .grant-acts{flex-direction:column;align-items:stretch}
+  .fl-programs .grant-acts .btn{display:block;width:100%;text-align:center}
+  .fl-programs .section-head .btn{white-space:normal}
+  #portal-fl.fl-compact{grid-template-columns:1fr}
+}

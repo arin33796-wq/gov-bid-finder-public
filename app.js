@@ -1,8 +1,8 @@
 import { hbar, vbar, line, card, fmt, usd, stateMap, floridaMap, calendarHeat } from "./charts.js?v=9";
 import { localISODate, addDaysISO, daysBetween, isSetAside, countOpen, liveRenewals, recentMonths, coverageSkewed, emailText, naicsSupportsTrade, emptyMatchAdvice, TRADES } from "./lib.js?v=6";
 import { initAgent } from "./agent.js?v=9";
-import { initPortal } from "./portal.js?v=10";
-import { initGrants } from "./grants.js?v=4";
+import { initPortal } from "./portal.js?v=11";
+import { initGrants } from "./grants.js?v=5";
 import { countyOf } from "./florida.js?v=1";
 
 const $ = (s) => document.querySelector(s);
@@ -748,7 +748,7 @@ updateSavedCount();
   if (m && ROWS.some((r) => r[F.ID] === decodeURIComponent(m[1]))) openDetail(decodeURIComponent(m[1]));
 }
 
-const grantsUI = initGrants({ daysLeft, money, localISODate, emptyHtml });
+const grantsUI = initGrants({ daysLeft, money, localISODate, emptyHtml, store });
 const portal = initPortal({
   F, rows: ROWS, hay: HAY, store, localISODate, daysLeft, setaside, source, naicsName,
   oppCard, openDetail, openVendors, grants: () => grantsUI.all(), grantCard: (g) => grantsUI.grantCard(g),
@@ -764,6 +764,7 @@ const agent = initAgent({
 $("#portal-more-grants").onclick = () => {
   grantsUI.setWho(portal.profile()?.kind === "nonprofit" ? "nonprofit" : "small_business");
   document.querySelector("[data-tab=grants]").click();
+  requestAnimationFrame(() => document.getElementById("federal-grants")?.scrollIntoView({ block: "start" }));
 };
 // Returning visitors land on their portal; first-time visitors get the welcome quiz.
 if (!location.hash && portal.profile()) document.querySelector("[data-tab=foryou]").click();
