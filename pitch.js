@@ -1,6 +1,7 @@
 import { floridaMap, fmt, usd } from "./charts.js?v=9";
 import { countyOf } from "./florida.js?v=1";
 import { localISODate, addDaysISO, countOpen, liveRenewals, filterGrants } from "./lib.js?v=6";
+import { pitchMiamiBlurb } from "./pitch-lib.js?v=1";
 
 // ---- slide navigation ----
 const slides = [...document.querySelectorAll(".slide")];
@@ -30,7 +31,7 @@ show(at);
 
 // ---- live numbers, filled in once the snapshot loads ----
 // Row columns mirror F in app.js.
-const DUE = 5, STATE = 7, VALUE = 19;
+const TITLE = 1, TYPE = 3, DUE = 5, STATE = 7, CNAME = 16, VALUE = 19;
 const STATE_NAME = { AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California", CO: "Colorado", CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia", HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa", KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland", MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi", MO: "Missouri", MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey", NM: "New Mexico", NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio", OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania", RI: "Rhode Island", SC: "South Carolina", SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont", VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming", DC: "Washington, D.C.", PR: "Puerto Rico" };
 const setStat = (k, v) => document.querySelectorAll(`[data-stat="${k}"]`).forEach((n) => { n.textContent = v; });
 
@@ -50,6 +51,9 @@ const [data, renewals, vendors, grantsFile] = await Promise.all([
 const SRC = data.meta.dicts.sources, CITY = 8;
 const open = data.rows.filter((r) => r[DUE] >= today);
 setStat("open", countOpen(data.rows, DUE, today).toLocaleString());
+// VALUE is the typical historical award for that notice's industry code, across
+// every open notice that has one. It is not the price of the notice, and it is
+// not limited to the trades named in the paragraph under the number.
 const values = open.map((r) => r[VALUE]).filter(Boolean).sort((a, b) => a - b);
 setStat("median", values.length ? usd(values[Math.floor(values.length / 2)]) : "n/a");
 setStat("fl", open.filter((r) => r[STATE] === "FL").length.toLocaleString());
@@ -68,13 +72,20 @@ setStat("awards", fmt(data.meta.awards_by_month.reduce((a, m) => a + m.value, 0)
 byCounty = {};
 for (const r of open) if (r[STATE] === "FL") { const c = countyOf(r[CITY], SRC[r[10]]); if (c) byCounty[c] = (byCounty[c] || 0) + 1; }
 setStat("miami", (byCounty["Miami-Dade"] || 0).toLocaleString());
-setStat("mdcBids", open.filter((r) => SRC[r[10]] === "miami-dade").length.toLocaleString());
-// WHY: the slide says these are open to small businesses and nonprofits.
-// filterGrants includes Unrestricted for both (any applicant may apply) and
-// leaves out Others, whose eligibility is only in the listing text.
+const mdc = open.filter((r) => SRC[r[10]] === "miami-dade");
+setStat("mdcBids", mdc.length.toLocaleString());
+const types = data.meta.dicts.types;
+// WHY namedBuyer: the sentence is only true when a future solicitation in this
+// file names a person. Future rows are how the county lists work it plans to buy.
+const namedBuyer = mdc.some((r) => types[r[TYPE]] === "Future Solicitation" && String(r[CNAME] || "").trim());
+document.getElementById("miami-lead").textContent = pitchMiamiBlurb(mdc.map((r) => r[TITLE]), { namedBuyer });
+// WHY hideResearch: the Grants tab's "Hide research grants" box starts checked.
+// WHY the union: the number is grants a small business or a nonprofit may apply
+// for. Unrestricted (Grants.gov 99) counts for both. Others (code 25) does not,
+// because that listing only says who may apply in its own text.
 const grantIds = new Set();
 for (const who of ["small_business", "nonprofit"]) {
-  for (const g of filterGrants(grantsFile.grants, { who, hideResearch: false, today })) grantIds.add(g.id);
+  for (const g of filterGrants(grantsFile.grants || [], { who, hideResearch: true, today })) grantIds.add(g.id);
 }
 setStat("grants", grantIds.size.toLocaleString());
 if (slides[at].querySelector("#deck-map")) drawMap();
