@@ -1,7 +1,7 @@
 // The Grants tab: federal grants open to small businesses, nonprofits and
 // individuals, from grants.json (built daily from Grants.gov).
 import { filterGrants } from "./lib.js?v=3";
-import { loadFloridaPrograms, renderLists, verifiedPrograms, closedShown, toggleClosedShown } from "./florida-programs.js?v=1";
+import { loadFloridaPrograms, renderLists, verifiedPrograms, closedShown, toggleClosedShown } from "./florida-programs.js?v=2";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));

@@ -8,17 +8,27 @@ import {
   safeUrl,
 } from "../florida-programs.js";
 
-const data = JSON.parse(readFileSync(new URL("../florida-programs.json", import.meta.url)));
-const byId = (id) => data.grants.find((g) => g.id === id);
+const data = JSON.parse(readFileSync(new URL("../research/fl-programs.json", import.meta.url)));
+const byId = (id) => data.programs.find((g) => g.id === id);
 
 test("the data file is the 28 verified programs, unverified rows excluded from the list", () => {
   assert.equal(data.meta.count, 28);
-  assert.equal(data.grants.length, 28);
+  assert.equal(data.programs.length, 28);
+  assert.equal(data.grants, undefined);
+  assert.match(data.meta.rechecked, /miami\.gov/);
+  assert.match(data.meta.rechecked, /miamidda\.com/);
   assert.equal(verifiedPrograms(data).length, 28);
+  assert.deepEqual(verifiedPrograms({ grants: [{ id: "nope" }] }), []);
   assert.equal(verifiedPrograms(data).some((p) => /Job Growth Grant Fund/.test(p.name)), false);
+  const urls = data.programs.flatMap((p) => [p.official_url, ...(p.extra_urls || [])]);
+  assert.ok(urls.some((u) => u.includes("miami.gov")));
+  assert.ok(urls.some((u) => u.includes("miamidda.com")));
+  assert.match(byId("fl-ebl-isaias").notes, /Activated per disaster\./);
+  assert.doesNotMatch(byId("fl-ebl-isaias").notes, /govbid could surface/);
+  assert.match(byId("mdc-sbe-cert").notes, /required for SBE set-aside county contracts/);
   assert.ok(data.unverified_left_out.length > 0);
-  assert.deepEqual(countByStatus(data.grants), { open: 8, rolling: 3, unclear: 3, closed: 14 });
-  assert.equal(listVerifiedOn(data.grants), "2026-10-25");
+  assert.deepEqual(countByStatus(data.programs), { open: 8, rolling: 3, unclear: 3, closed: 14 });
+  assert.equal(listVerifiedOn(data.programs), "2026-10-25");
 });
 
 test("sort puts open, then rolling, then unclear, then closed", () => {
@@ -35,14 +45,14 @@ test("sort puts open, then rolling, then unclear, then closed", () => {
   assert.ok(statusRank("unclear") > statusRank("rolling"));
   assert.ok(statusRank("rolling") > statusRank("open"));
 
-  const sorted = sortPrograms(data.grants);
+  const sorted = sortPrograms(data.programs);
   let last = -1;
   for (const p of sorted) {
     const rank = statusRank(p.status);
     assert.ok(rank >= last, p.id);
     last = rank;
   }
-  const parts = partitionPrograms(data.grants);
+  const parts = partitionPrograms(data.programs);
   assert.equal(parts.active.length, 14);
   assert.equal(parts.closed.length, 14);
   assert.ok(parts.active.every((p) => p.status !== "closed"));
@@ -51,7 +61,7 @@ test("sort puts open, then rolling, then unclear, then closed", () => {
 });
 
 test("closed programs are never labeled or presented as open", () => {
-  for (const p of data.grants.filter((g) => g.status === "closed")) {
+  for (const p of data.programs.filter((g) => g.status === "closed")) {
     const view = presentProgram(p);
     assert.equal(view.available, false, p.id);
     assert.notEqual(view.statusText, "Open", p.id);
@@ -64,7 +74,7 @@ test("closed programs are never labeled or presented as open", () => {
     assert.equal(html.includes("is-rolling"), false, p.id);
     assert.match(html, /class="fl-status is-(?:closed|canceled)">(?:Closed|Canceled)</, p.id);
   }
-  const view = renderLists(data.grants);
+  const view = renderLists(data.programs);
   assert.equal(view.activeHtml.includes('data-status="closed"'), false);
   assert.equal(view.closedHtml.includes('data-available="true"'), false);
   assert.match(view.closedHtml, /class="fl-status is-closed">Closed</);
@@ -85,7 +95,7 @@ test("free help entries are labeled free help, not grants", () => {
     assert.match(html, /class="fl-kind is-help">Free help</, id);
     assert.doesNotMatch(html, />Grant</, id);
   }
-  for (const p of data.grants) {
+  for (const p of data.programs) {
     if (p.type === "grant") assert.notEqual(kindKey(p), "free help", p.id);
     if (p.type === "technical_assistance") assert.equal(kindKey(p), "free help", p.id);
   }
@@ -113,11 +123,11 @@ test("the Miami-Dade CBO program keeps the word Canceled", () => {
 });
 
 test("each entry keeps its official link, Florida program label, and verified date", () => {
-  const view = renderLists(data.grants);
+  const view = renderLists(data.programs);
   assert.equal(view.verified, "Verified on 2026-10-25.");
   assert.equal(view.summary, "8 open (3 free help, 1 loan), 3 rolling, 3 unclear, 14 closed");
   assert.equal(view.activeHtml.includes("Verified on"), false);
-  for (const p of data.grants) {
+  for (const p of data.programs) {
     const html = programCard(p);
     const card = presentProgram(p);
     assert.equal(card.source, SOURCE_LABEL, p.id);
@@ -166,7 +176,7 @@ test("compact cards drop the long detail and a Miami business does not see nonpr
   assert.equal(fitsProfile(sbdc, nonprofit), false);
   assert.equal(fitsProfile(byId("seopw-public-art"), nonprofit), true);
 
-  const mine = data.grants.filter((p) => fitsProfile(p, miami));
+  const mine = data.programs.filter((p) => fitsProfile(p, miami));
   const listed = renderLists(mine, { compact: true });
   assert.equal(listed.activeHtml.includes('data-status="closed"'), false);
   assert.match(listed.activeHtml, /Free help/);

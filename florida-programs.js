@@ -1,6 +1,8 @@
-// Florida and Miami programs from florida-programs.json. This list is separate
+// Florida and Miami programs from research/fl-programs.json. This list is separate
 // from Grants.gov: nothing here is passed to filterGrants or the federal counts.
-// unverified_left_out stays in the file and is never shown.
+// unverified_left_out stays in the file and is never shown. miami.gov and
+// miamidda.com return 403 to scripted curls and still load in a browser, so
+// url_status is never used to drop a program.
 
 // WHY: every card names its source so a local program cannot be read as a
 // Grants.gov record. The researcher specified this label.
@@ -37,6 +39,10 @@ const KIND_BY_TYPE = {
 // WHY: a program link must be a real web URL. Rendering anything else as an
 // href could navigate without a trustworthy click target.
 const ALLOWED_PROTOCOLS = new Set(["https:", "http:"]);
+
+// WHY: the curated list lives under research/ so a Grants.gov rebuild cannot
+// overwrite it or merge it into grants.json.
+const PROGRAMS_URL = "./research/fl-programs.json";
 
 // WHY: only this geography is for the whole state. City of Miami and
 // Miami-Dade entries are local and stay off a non-Miami profile.
@@ -111,10 +117,10 @@ export function partitionPrograms(programs) {
   };
 }
 
-// The file also carries unverified_left_out. Callers must use this, not the
-// whole document, so those rows never reach the page.
+// The file's list is `programs`. unverified_left_out stays out of the UI, and a
+// `grants` key is ignored so this list cannot mix into Grants.gov data.
 export function verifiedPrograms(data) {
-  return Array.isArray(data?.grants) ? data.grants : [];
+  return Array.isArray(data?.programs) ? data.programs : [];
 }
 
 export function countByStatus(programs) {
@@ -222,9 +228,9 @@ export function toggleClosedShown(store) {
 let pending = null;
 export function loadFloridaPrograms() {
   if (!pending) {
-    pending = fetch("./florida-programs.json")
+    pending = fetch(PROGRAMS_URL)
       .then((r) => { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
-      .catch(() => { pending = null; return { meta: {}, grants: [] }; });
+      .catch(() => { pending = null; return { meta: {}, programs: [] }; });
   }
   return pending;
 }

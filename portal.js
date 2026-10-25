@@ -5,7 +5,7 @@
 import { TRADES, CERTS, profileStems, stemMatcher, setAsideAllowed, profileToText, filterGrants } from "./lib.js?v=3";
 import { FL_COUNTIES, countyOf, SOUTH_FLORIDA } from "./florida.js?v=1";
 import { floridaMap } from "./charts.js?v=8";
-import { loadFloridaPrograms, renderLists, verifiedPrograms, closedShown, toggleClosedShown, fitsProfile } from "./florida-programs.js?v=1";
+import { loadFloridaPrograms, renderLists, verifiedPrograms, closedShown, toggleClosedShown, fitsProfile } from "./florida-programs.js?v=2";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
