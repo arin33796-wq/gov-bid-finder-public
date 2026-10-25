@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400..700&family=Hanken+Grotesk:wght@400..700&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="./styles.css?v=1792944000">
+<link rel="stylesheet" href="./styles.css?v=1792945200">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='11' fill='%236fa8ff'/></svg>">
 </head>
 <body>
@@ -63,6 +63,17 @@
           </div>
         </div>
       </div>
+      <section class="fl-programs" id="portal-fl-block" aria-labelledby="portal-fl-title">
+        <div class="section-head">
+          <h2 id="portal-fl-title">Florida &amp; Miami programs</h2>
+          <button type="button" class="btn ghost" id="portal-fl-toggle" hidden aria-expanded="false">Show closed programs</button>
+        </div>
+        <p class="chart-sub" id="portal-fl-lead">Verified local programs, separate from Grants.gov.</p>
+        <p class="small muted" id="portal-fl-count"></p>
+        <div class="results fl-compact" id="portal-fl"></div>
+        <div class="results" id="portal-fl-closed" hidden aria-label="Closed Florida programs"></div>
+        <p class="fl-more"><button type="button" class="btn ghost" id="portal-fl-all">See the full Florida list</button></p>
+      </section>
       <div class="section-head"><h2 id="portal-list-title">Best matches for you</h2><button type="button" class="btn ghost" id="portal-clear" hidden>Show all of Florida</button></div>
       <div class="results" id="portal-list"></div>
       <div class="section-head"><h2>Grants you could apply for</h2><button type="button" class="btn ghost" id="portal-more-grants">See all grants</button></div>
@@ -164,8 +175,19 @@
   <section class="panel" id="panel-grants">
     <div class="hero" style="padding:22px 4px 14px">
       <h1 style="font-size:clamp(24px,3.2vw,36px)">Grants you can apply for</h1>
-      <p class="lede">Federal grants open to small businesses, nonprofits and individuals, refreshed daily from Grants.gov. Research grants for labs are hidden unless you ask for them.</p>
+      <p class="lede">Florida and Miami programs are listed first, each checked on its official page. Federal grants from Grants.gov follow, with their own filters. Research grants for labs stay hidden unless you ask for them.</p>
     </div>
+    <section class="fl-programs" id="fl-programs" aria-labelledby="fl-programs-title">
+      <div class="section-head">
+        <h2 id="fl-programs-title">Florida &amp; Miami programs</h2>
+        <button type="button" class="btn ghost" id="fl-closed-toggle" hidden aria-expanded="false">Show closed programs</button>
+      </div>
+      <p class="chart-sub" id="fl-programs-lead">A separate list, checked on each program's official page. Not from Grants.gov.</p>
+      <p class="small muted" id="fl-programs-count"></p>
+      <div class="results" id="fl-programs-list"></div>
+      <div class="results" id="fl-programs-closed" hidden aria-label="Closed Florida programs"></div>
+    </section>
+    <div class="section-head" id="federal-grants"><h2>Federal grants from Grants.gov</h2></div>
     <div class="filters">
       <input type="search" id="g-q" placeholder="Search: food, housing, youth, workforce, environment…">
       <select id="g-who"><option value="">Anyone eligible</option><option value="small_business">Small businesses</option><option value="nonprofit">Nonprofits</option><option value="individual">Individuals</option></select>
@@ -388,6 +410,6 @@
   </div>
 </dialog>
 <div class="tooltip" id="tip"></div>
-<script type="module" src="./app.js?v=1792944001"></script>
+<script type="module" src="./app.js?v=1792945200"></script>
 </body>
 </html>

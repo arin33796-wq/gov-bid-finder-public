@@ -1,6 +1,7 @@
 // The Grants tab: federal grants open to small businesses, nonprofits and
 // individuals, from grants.json (built daily from Grants.gov).
 import { filterGrants } from "./lib.js?v=3";
+import { loadFloridaPrograms, renderLists, verifiedPrograms, closedShown, toggleClosedShown } from "./florida-programs.js?v=1";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -45,6 +46,28 @@ export function initGrants(ctx) {
     $("#g-more").hidden = p * 20 >= hits.length;
   }
 
+  // Florida programs paint into their own nodes. run() never reads or writes them,
+  // so Grants.gov filters and #g-count stay federal-only.
+  function paintFlorida(data) {
+    const programs = verifiedPrograms(data);
+    const show = closedShown(ctx.store);
+    const view = renderLists(programs);
+    const lead = $("#fl-programs-lead");
+    if (!lead) return;
+    lead.textContent = programs.length
+      ? `${view.verified ? view.verified + " " : ""}Separate from the Grants.gov list below, and not included in those counts or filters.`
+      : "Florida programs could not be loaded.";
+    $("#fl-programs-count").textContent = programs.length ? `${programs.length} programs: ${view.summary}.` : "";
+    $("#fl-programs-list").innerHTML = view.activeHtml || (programs.length ? '<div class="empty small">No programs are accepting applications right now.</div>' : "");
+    const closedHost = $("#fl-programs-closed");
+    const toggle = $("#fl-closed-toggle");
+    toggle.hidden = view.closedCount === 0;
+    toggle.textContent = show ? "Hide closed programs" : `Show ${view.closedCount} closed programs`;
+    toggle.setAttribute("aria-expanded", show ? "true" : "false");
+    closedHost.innerHTML = view.closedHtml;
+    closedHost.hidden = !show || view.closedCount === 0;
+  }
+
   let wired = false;
   async function init() {
     await load();
@@ -55,8 +78,13 @@ export function initGrants(ctx) {
       ["#g-who", "#g-cat", "#g-sort", "#g-research"].forEach((s) => $(s).onchange = () => run(1));
       $("#g-q").addEventListener("input", () => { clearTimeout(window._gq); window._gq = setTimeout(() => run(1), 220); });
       $("#g-more").onclick = () => run(page + 1);
+      $("#fl-closed-toggle").onclick = () => {
+        toggleClosedShown(ctx.store);
+        loadFloridaPrograms().then(paintFlorida);
+      };
     }
     run(1);
+    loadFloridaPrograms().then(paintFlorida);
   }
 
   return { init, load, grantCard, all: () => GRANTS, setWho: (w) => { $("#g-who").value = w; } };
