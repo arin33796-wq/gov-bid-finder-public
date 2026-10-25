@@ -4,7 +4,7 @@
 // work, saves picks to the shortlist, and proposes buyer emails. Anything that
 // leaves the page (a Gmail draft) waits for the person to press a button.
 
-import { profileToText, filterGrants, stemMatcher } from "./lib.js?v=3";
+import { profileToText, filterGrants, stemMatcher } from "./lib.js?v=4";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));

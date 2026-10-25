@@ -79,8 +79,31 @@ export const stemMatcher = (stems) => {
   const parts = stems.map((s) => String(s).toLowerCase().trim()).filter(Boolean).map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   if (!parts.length) return () => true;
   const re = new RegExp(`(?:^|[^a-z0-9])(?:${parts.join("|")})`);
-  return (text) => re.test(text);
+  return (text) => re.test(String(text || "").toLowerCase());
 };
+
+// An industry name supports a trade when a stem is the main line of work: the
+// text before the first comma, or the classifying tail after the last comma
+// ("Highway, Street, and Bridge Construction"). A stem that only sits in a
+// middle clause does not ("Automotive Body, Paint, and Interior Repair" is
+// auto-body work, and it was the only Florida hit for a painter).
+export function naicsSupportsTrade(name, stems) {
+  const n = String(name || "").toLowerCase().replace(/\s+/g, " ").trim();
+  if (!n || !stems?.length) return false;
+  const fits = stemMatcher(stems);
+  if (!fits(n)) return false;
+  const parts = n.split(",").map((s) => s.trim()).filter(Boolean);
+  if (fits(parts[0])) return true;
+  return parts.length > 1 && fits(parts[parts.length - 1]);
+}
+
+// Title and description first. The industry name counts only when it actually
+// supports the trade, so a side activity in the code does not create a hit.
+export function noticeMatchesTrade(text, naicsName, stems) {
+  if (!stems?.length) return true;
+  if (stemMatcher(stems)(text)) return true;
+  return naicsSupportsTrade(naicsName, stems);
+}
 
 export const profileStems = (p) => {
   const stems = (p?.trades || []).flatMap((id) => TRADES.find((t) => t.id === id)?.stems || []);
@@ -119,10 +142,44 @@ export function profileToText(p) {
 }
 
 // ---- grants ----
-// WHY: most open federal grants open to small businesses are NIH research awards
-// (activity codes like R01, R21, SBIR). Useful to labs, noise to a Miami bakery.
-const RESEARCH_RE = /\b(R0[0-9]|R1[0-9]|R2[0-9]|R3[0-9]|R4[0-9]|R6[01]|U0[0-9]|U2[0-9]|U4[0-9]|UG3|UH3|K0[0-9]|K2[0-9]|P0[0-9]|P2[0-9]|P5[0-9]|F3[0-9]|T3[0-9]|SBIR|STTR)\b|clinical trial/i;
-export const isResearchGrant = (g) => RESEARCH_RE.test(g.title) || /national institutes of health/i.test(g.agency);
+// WHY: most open federal grants aimed at small businesses are research awards
+// (activity codes like R01, U54, T32, SBIR). Useful to labs, noise to a contractor.
+// The code is one letter plus two digits. An earlier pattern listed only some
+// digit bands (U0x, U2x, U4x, T3x), so U54, U19, T03 and T42 stayed visible,
+// including a construction-safety research center. FY27 is a fiscal year (two
+// letters) and must not match.
+const RESEARCH_RE = /\b(?:[RUKTPF]\d{2}|UG3|UH3|SBIR|STTR)\b|clinical trial/i;
+export const isResearchGrant = (g) => RESEARCH_RE.test(g?.title || "") || /national institutes of health/i.test(g?.agency || "");
+
+// A grant fits a trade when a stem is in the title or a category. The synopsis
+// is ignored: a chemical program that only defines "construction and demolition
+// waste" is not a construction grant.
+export function grantMatchesTrade(grant, stems) {
+  if (!stems?.length) return false;
+  const head = `${grant?.title || ""} ${(grant?.categories || []).join(" ")}`;
+  return stemMatcher(stems)(head);
+}
+
+// WHY 3: an empty state can name a few real alternatives. More than that is a second list.
+const EMPTY_TRADE_CAP = 3;
+
+// Suggestions for a filter that matched nothing. Counts come from the caller;
+// a suggestion is kept only when its count is a real number above zero, so the
+// page never invents a total. `kind: "trade"` is capped; widen steps are not.
+export function emptyMatchAdvice({ subject, place = "", suggestions = [] } = {}) {
+  const what = String(subject || "results").trim() || "results";
+  const where = String(place || "").trim();
+  const widen = [];
+  const trades = [];
+  for (const s of suggestions) {
+    const count = Number(s?.count);
+    if (!Number.isFinite(count) || count <= 0 || !s?.label) continue;
+    const item = { id: String(s.id || s.label), label: String(s.label), count };
+    if (s.kind === "trade") { if (trades.length < EMPTY_TRADE_CAP) trades.push(item); }
+    else widen.push(item);
+  }
+  return { title: where ? `No open ${what} in ${where}.` : `No open ${what}.`, widen, trades };
+}
 
 export function filterGrants(grants, { who = "", category = "", q = "", hideResearch = true, today = "" } = {}) {
   const terms = String(q).toLowerCase().split(/\s+/).filter(Boolean);
