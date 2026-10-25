@@ -114,12 +114,19 @@ export function initPortal(ctx) {
     const myGrants = profileStems(p).length ? grants.filter((g) => grantFits(`${g.title} ${g.desc}`.toLowerCase())) : [];
 
     $("#portal-who").textContent = `${p.kind === "nonprofit" ? "A nonprofit" : "A business"} in ${p.county === "outside" ? "the US" : p.county + " County"}${tradeLabel(p) ? ` · ${tradeLabel(p)}` : ""}`;
+    // County and Florida counts only read Florida rows, which are in the first
+    // file. The nationwide total waits, so a short number is never shown as the total.
+    const nationwideReady = ctx.complete ? ctx.complete() : true;
+    const soonReady = ctx.covered ? ctx.covered({ state: "", source: "", days: 7 }) : nationwideReady;
+    const nationwideSub = nationwideReady
+      ? `${soon} closing this week`
+      : (soonReady ? `${soon} closing this week · full count still loading` : "full count still loading");
     $("#portal-tiles").innerHTML = [
       [p.county === "outside" ? "Nationwide" : `In ${p.county}`, inCounty.length, p.county === "outside" ? "" : "open contracts in your county"],
       ["In Florida", fl.length, "open contracts in your trade"],
-      ["Nationwide", all.length, `${soon} closing this week`],
+      ["Nationwide", nationwideReady ? all.length : "…", nationwideSub],
       ["Grants for you", (myGrants.length || grants.length), myGrants.length ? "match your trade" : `open to ${grantWho === "nonprofit" ? "nonprofits" : "small businesses"}`],
-    ].map(([l, v, s]) => `<div class="card tile"><div class="label">${esc(l)}</div><div class="value">${Number(v).toLocaleString()}</div><div class="sub">${esc(s)}</div></div>`).join("");
+    ].map(([l, v, s]) => `<div class="card tile"><div class="label">${esc(l)}</div><div class="value">${v === "…" ? "…" : Number(v).toLocaleString()}</div><div class="sub">${esc(s)}</div></div>`).join("");
 
     // Florida county heatmap of contracts in their trade.
     const byCounty = {};

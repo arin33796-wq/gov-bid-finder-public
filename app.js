@@ -1,9 +1,10 @@
 import { hbar, vbar, line, card, fmt, usd, stateMap, floridaMap, calendarHeat } from "./charts.js?v=8";
 import { localISODate, addDaysISO, daysBetween, isSetAside, countOpen, liveRenewals, recentMonths, coverageSkewed, emailText } from "./lib.js?v=3";
 import { initAgent } from "./agent.js?v=5";
-import { initPortal } from "./portal.js?v=5";
+import { initPortal } from "./portal.js?v=6";
 import { initGrants } from "./grants.js?v=1";
 import { countyOf } from "./florida.js?v=1";
+import { FIRST_PAINT_DAYS, loadSnapshot, coveredByFirstPaint } from "./snapshot.js?v=1";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -67,24 +68,47 @@ const F = { ID: 0, TITLE: 1, DEPT: 2, TYPE: 3, SA: 4, DUE: 5, NAICS: 6, STATE: 7
 const V = { NAME: 0, CITY: 1, STATE: 2, AWARDS: 3, AVG: 4, LAST: 5, REL: 6, EMAIL: 7, PHONE: 8, DOMAIN: 9 };
 let VENDORS = {};
 let META = null, ROWS = [], HAY = [];
+let D;
+let dataComplete = false;
+let builtOn = "";
+
+const fetchJson = async (file) => {
+  const res = await fetch("./" + file);
+  if (!res.ok) throw new Error(file);
+  return res.json();
+};
 
 $("#pill-data").textContent = "loading…";
 // WHY: vendors load alongside the notices, not after. Cards rendered before the
-// vendor list arrived never got a "Find companies" button.
-const [payload, vendors] = await Promise.all([
-  fetch("./data.json").then((r) => r.json()),
-  fetch("./vendors.json").then((r) => r.json()).catch(() => ({})),
-]);
-META = payload.meta; ROWS = payload.rows; VENDORS = vendors;
-const D = META.dicts;
+// vendor list arrived never got a "Find companies" button. The rest of the
+// snapshot downloads with the priority file and merges after the first paint,
+// so Florida and the next 90 days are not stuck behind the whole country.
+const vendorsP = fetch("./vendors.json").then((r) => r.json()).catch(() => ({}));
+const loaded = await loadSnapshot(fetchJson);
+const vendors = await vendorsP;
+META = loaded.priority.meta;
+ROWS = loaded.priority.rows;
+VENDORS = vendors;
+dataComplete = loaded.complete;
+D = META.dicts;
 NAICS_NAME = META.naics_names || {};
+builtOn = new Date(META.built_at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 // Searching "roofing" should find a roofing contract whose title never says it, so the
 // industry name goes into the haystack alongside the title and description.
-HAY = ROWS.map((r) => (r[F.TITLE] + " " + r[F.SNIP] + " " + D.depts[r[F.DEPT]] + " " + r[F.NAICS] + " " + naicsName(r[F.NAICS])).toLowerCase());
-// The snapshot is not live. Count what is still open today and say how old the data is,
-// rather than repeating the total from the day it was built.
-const builtOn = new Date(META.built_at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-$("#pill-data").textContent = `${countOpen(ROWS, F.DUE, localISODate()).toLocaleString()} open · data from ${builtOn}`;
+function addHay(r) {
+  HAY.push((r[F.TITLE] + " " + r[F.SNIP] + " " + D.depts[r[F.DEPT]] + " " + r[F.NAICS] + " " + naicsName(r[F.NAICS])).toLowerCase());
+}
+for (const r of ROWS) addHay(r);
+// The snapshot is not live. The nationwide open count needs every row, so it waits
+// for the rest of the file. Until then the pill says what actually loaded.
+function showDataStatus() {
+  $("#pill-data").textContent = dataComplete
+    ? `${countOpen(ROWS, F.DUE, localISODate()).toLocaleString()} open · data from ${builtOn}`
+    : `Florida and the next ${FIRST_PAINT_DAYS} days · loading the rest`;
+  $("#about-built").textContent = `Snapshot of ${META.total.toLocaleString()} open notices, built ${new Date(META.built_at).toLocaleString()}.`;
+}
+showDataStatus();
+const finishSnapshot = loaded.finish();
 
 const dept = (r) => D.depts[r[F.DEPT]] || "";
 const type = (r) => D.types[r[F.TYPE]] || "";
@@ -100,16 +124,28 @@ function fillSelect(sel, values, label) {
   for (const [v, n] of [...counts].sort((a, b) => b[1] - a[1]))
     if (v) { const o = document.createElement("option"); o.value = v; o.textContent = `${label(v)} (${n.toLocaleString()})`; sel.appendChild(o); }
 }
-for (const sel of [$("#d-state"), $("#s-state")]) {
-  const counts = new Map();
-  for (const r of ROWS) if (r[F.STATE]) counts.set(r[F.STATE], (counts.get(r[F.STATE]) || 0) + 1);
-  // The federal feed carries a few malformed codes ("AL-11", "AM-AG"); only list real ones.
-  const sorted = [...counts].filter(([v]) => STATE_NAME[v]).sort((a, b) => stateName(a[0]).localeCompare(stateName(b[0])));
-  for (const [v, n] of sorted) { const o = document.createElement("option"); o.value = v; o.textContent = `${stateName(v)} (${n.toLocaleString()})`; sel.appendChild(o); }
+function refill(sel, add) {
+  const selected = sel.value;
+  while (sel.options.length > 1) sel.remove(1);
+  add();
+  if ([...sel.options].some((o) => o.value === selected)) sel.value = selected;
 }
-for (const sel of [$("#d-source"), $("#s-source")]) fillSelect(sel, ROWS.map(source), sourceLabel);
-fillSelect($("#s-dept"), ROWS.map(dept), agencyName);
-fillSelect($("#s-type"), ROWS.map(type), (v) => v);
+function fillFilters() {
+  for (const sel of [$("#d-state"), $("#s-state")]) {
+    refill(sel, () => {
+      const counts = new Map();
+      for (const r of ROWS) if (r[F.STATE]) counts.set(r[F.STATE], (counts.get(r[F.STATE]) || 0) + 1);
+      // The federal feed carries a few malformed codes ("AL-11", "AM-AG"); only list real ones.
+      const sorted = [...counts].filter(([v]) => STATE_NAME[v]).sort((a, b) => stateName(a[0]).localeCompare(stateName(b[0])));
+      for (const [v, n] of sorted) { const o = document.createElement("option"); o.value = v; o.textContent = `${stateName(v)} (${n.toLocaleString()})`; sel.appendChild(o); }
+    });
+  }
+  refill($("#d-source"), () => fillSelect($("#d-source"), ROWS.map(source), sourceLabel));
+  refill($("#s-source"), () => fillSelect($("#s-source"), ROWS.map(source), sourceLabel));
+  refill($("#s-dept"), () => fillSelect($("#s-dept"), ROWS.map(dept), agencyName));
+  refill($("#s-type"), () => fillSelect($("#s-type"), ROWS.map(type), (v) => v));
+}
+fillFilters();
 
 // ---- filtering ----
 const money = (n) => !n ? "?" : n >= 1e6 ? "$" + (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + "M" : n >= 1e3 ? "$" + Math.round(n / 1e3) + "k" : "$" + Math.round(n);
@@ -171,17 +207,24 @@ const tally = (rows, key) => {
 
 // ---- dashboard ----
 function renderDashboard() {
-  const rows = filtered({ state: $("#d-state").value, src: $("#d-source").value, sa: $("#d-setaside").value, days: Number($("#d-days").value) || 0 });
+  const filterDays = Number($("#d-days").value) || 0;
+  const rows = filtered({ state: $("#d-state").value, src: $("#d-source").value, sa: $("#d-setaside").value, days: filterDays });
   const scope = $("#d-state").value ? `in ${stateName($("#d-state").value)}` : "nationwide";
+  // A view is covered when every row it can show is already in memory. Florida
+  // is. A deadline window is, when it ends inside the priority file's window.
+  const cover = { complete: dataComplete, snapshotToday: META.today, userToday: localISODate(), source: $("#d-source").value };
+  const tilesCovered = coveredByFirstPaint({ ...cover, state: $("#d-state").value, days: filterDays });
+  const soonCovered = coveredByFirstPaint({ ...cover, state: $("#d-state").value, days: 7 });
   const soon = rows.filter((r) => daysLeft(r[F.DUE]) <= 7).length;
   const small = rows.filter((r) => setaside(r)).length;
   const months = recentMonths(META.awards_by_month, 12);
   const awards12 = months.reduce((a, b) => a + (b.dollars || 0), 0);
   const bySrc = tally(rows, source);
+  const matchSub = bySrc.length > 1 ? bySrc.map((x) => `${x.value.toLocaleString()} ${sourceLabel(x.label).replace(/ \(.*\)/, "")}`).join(" · ") : `open notices ${scope}`;
   $("#tiles").innerHTML = [
-    ["Matching your filters", rows.length.toLocaleString(), bySrc.length > 1 ? bySrc.map((x) => `${x.value.toLocaleString()} ${sourceLabel(x.label).replace(/ \(.*\)/, "")}`).join(" · ") : `open notices ${scope}`],
-    ["Closing this week", soon.toLocaleString(), `deadlines within 7 days ${scope}`],
-    ["Reserved for small business", small.toLocaleString(), `of ${rows.length.toLocaleString()} shown`],
+    [tilesCovered ? "Matching your filters" : "Matching so far", rows.length.toLocaleString(), tilesCovered ? matchSub : "notices due later are still loading"],
+    ["Closing this week", soonCovered ? soon.toLocaleString() : "…", soonCovered ? `deadlines within 7 days ${scope}` : "still loading"],
+    ["Reserved for small business", tilesCovered ? small.toLocaleString() : "…", tilesCovered ? `of ${rows.length.toLocaleString()} shown` : "still loading notices due later"],
     ["Awarded, last 12 months", usd(awards12), `${months.reduce((a, b) => a + b.value, 0).toLocaleString()} contracts on record`],
   ].map(([l, v, s]) => `<div class="card tile"><div class="label">${l}</div><div class="value">${v}</div><div class="sub">${s}</div></div>`).join("");
 
@@ -211,12 +254,16 @@ function renderDashboard() {
     floridaMap(el, byCounty, { selected: "Miami-Dade", ariaLabel: "Open notices by Florida county" }), heat);
   const byDay = {};
   for (const r of rows) byDay[r[F.DUE]] = (byDay[r[F.DUE]] || 0) + 1;
-  const days = Number($("#d-days").value) || 90;
+  const days = filterDays || 90;
   const busiest = Object.entries(byDay).sort((a, b) => b[1] - a[1])[0];
-  add("Deadline calendar", busiest ? `Darker days have more bids due. Busiest: ${new Date(busiest[0] + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}, with ${busiest[1]} due.` : "No deadlines in this window.", (el) =>
+  const calendarNote = tilesCovered ? "" : " Notices due later are still loading.";
+  add("Deadline calendar", busiest ? `Darker days have more bids due. Busiest: ${new Date(busiest[0] + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}, with ${busiest[1]} due.${calendarNote}` : "No deadlines in this window.", (el) =>
     calendarHeat(el, byDay, { start: localISODate(), today: localISODate(), weeks: Math.min(13, Math.ceil(days / 7) + 1) }), heat);
 
-  add("Where the work is nationally", st ? `${stateName(st)} outlined. Click another state to switch, or the same one to clear.` : "Open notices by place of performance. Click a state to focus the dashboard on it.", (el) =>
+  const mapCovered = coveredByFirstPaint({ ...cover, state: "", days: filterDays });
+  add("Where the work is nationally", mapCovered
+    ? (st ? `${stateName(st)} outlined. Click another state to switch, or the same one to clear.` : "Open notices by place of performance. Click a state to focus the dashboard on it.")
+    : "Notices due later are still loading, so a state can still gain bids.", (el) =>
     stateMap(el, byState, { selected: st, names: STATE_NAME, notes, onClick: (code) => { $("#d-state").value = code === st ? "" : code; renderDashboard(); } }));
 
   const weeks = new Map();
@@ -289,7 +336,14 @@ function runSearch(p = 1) {
   if (p === 1) host.innerHTML = "";
   if (!hits.length) { host.innerHTML = '<div class="empty">No notices match. Try fewer filters or a broader word.</div>'; $("#s-count").textContent = ""; $("#s-more").hidden = true; return; }
   const slice = hits.slice((p - 1) * 25, p * 25);
-  $("#s-count").textContent = `${hits.length.toLocaleString()} notices — showing ${Math.min(p * 25, hits.length).toLocaleString()}`;
+  const searchCovered = coveredByFirstPaint({
+    state: $("#s-state").value, source: $("#s-source").value, days: 0,
+    complete: dataComplete, snapshotToday: META.today, userToday: localISODate(),
+  });
+  const shown = Math.min(p * 25, hits.length).toLocaleString();
+  $("#s-count").textContent = searchCovered
+    ? `${hits.length.toLocaleString()} notices — showing ${shown}`
+    : `${hits.length.toLocaleString()} notices so far — showing ${shown}. Deadlines past ${FIRST_PAINT_DAYS} days are still loading`;
   host.insertAdjacentHTML("beforeend", slice.map(oppCard).join(""));
   host.querySelectorAll(".opp").forEach((c) => c.onclick = () => openDetail(c.dataset.id));
   host.querySelectorAll(".find-co").forEach((b) => b.onclick = (e) => { e.stopPropagation(); openVendors(b.dataset.id); });
@@ -492,6 +546,10 @@ function openDetail(id) {
 let planDone = false;
 async function initPlan() {
   if (planDone) return;
+  if (!dataComplete) {
+    $("#plan-tiles").innerHTML = `<div class="card tile"><div class="label">Contracts we can send</div><div class="value">…</div><div class="sub">Loading the full set before counting</div></div>`;
+    return;
+  }
   planDone = true;
   // WHY: META.today is the day the snapshot was built; measuring against it counted
   // every notice that has closed since as still sendable.
@@ -656,17 +714,28 @@ updateSavedCount();
 }
 
 const grantsUI = initGrants({ daysLeft, money, localISODate });
+let agent = null;
 const portal = initPortal({
   F, rows: ROWS, hay: HAY, store, localISODate, daysLeft, setaside, source,
   oppCard, openDetail, openVendors, grants: () => grantsUI.all(), grantCard: (g) => grantsUI.grantCard(g),
-  onProfile: (p) => agent.setProfile(p),
+  onProfile: (p) => agent?.setProfile(p),
+  complete: () => dataComplete,
+  covered: (q) => coveredByFirstPaint({ ...q, complete: dataComplete, snapshotToday: META.today, userToday: localISODate() }),
 });
-const agent = initAgent({
-  F, R, rows: ROWS, hay: HAY, vendors: () => VENDORS, loadRenewals, builtOn, grants: () => grantsUI.load(),
-  dept, type, setaside, source, agencyName, naicsName, stateName, money, daysLeft, localISODate, addDaysISO, countyOf,
-  save: (id) => { if (!saved.has(id)) toggleSaved(id); },
-  openDetail, copyAndTick, profile: () => portal.profile(),
-});
+function startAgent() {
+  if (agent) return;
+  if ($("#agent-status").textContent.startsWith("Loading the rest")) $("#agent-status").textContent = "";
+  agent = initAgent({
+    F, R, rows: ROWS, hay: HAY, vendors: () => VENDORS, loadRenewals, builtOn, grants: () => grantsUI.load(),
+    dept, type, setaside, source, agencyName, naicsName, stateName, money, daysLeft, localISODate, addDaysISO, countyOf,
+    save: (id) => { if (!saved.has(id)) toggleSaved(id); },
+    openDetail, copyAndTick, profile: () => portal.profile(),
+  });
+}
+// WHY: search_contracts reports a total. Starting it before the rest of the
+// snapshot arrives would hand back a short count as if it were the whole set.
+if (dataComplete) startAgent();
+else $("#agent-status").textContent = "Loading the rest of the contracts…";
 $("#portal-more-grants").onclick = () => {
   grantsUI.setWho(portal.profile()?.kind === "nonprofit" ? "nonprofit" : "small_business");
   document.querySelector("[data-tab=grants]").click();
@@ -678,4 +747,40 @@ $("#cta-agent").onclick = () => document.querySelector("[data-tab=agent]").click
 // A link ending in #agent (the pitch deck's demo slide) opens straight on the agent.
 if (location.hash === "#agent") document.querySelector("[data-tab=agent]").click();
 
-$("#about-built").textContent = `Snapshot of ${META.total.toLocaleString()} open notices, built ${new Date(META.built_at).toLocaleString()}.`;
+function wasCovered(state, source, days) {
+  return coveredByFirstPaint({ state, source, days, complete: false, snapshotToday: META.today, userToday: localISODate() });
+}
+function adoptFull(full) {
+  if (full.meta && full.meta !== META) {
+    META = full.meta;
+    D = META.dicts;
+    NAICS_NAME = META.naics_names || {};
+    builtOn = new Date(META.built_at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
+  const samePrefix = full.rows.length >= ROWS.length && full.rows.slice(0, ROWS.length).every((r, i) => r === ROWS[i]);
+  if (!samePrefix) { ROWS.length = 0; HAY.length = 0; }
+  for (const r of full.rows.slice(ROWS.length)) { ROWS.push(r); addHay(r); }
+  if (ROWS.length !== META.total) return;
+  dataComplete = true;
+  showDataStatus();
+  fillFilters();
+  const tab = currentTab();
+  if (tab === "dashboard") {
+    const days = Number($("#d-days").value) || 0;
+    if (!wasCovered($("#d-state").value, $("#d-source").value, days) || !wasCovered("", $("#d-source").value, days)) renderDashboard();
+  }
+  if (tab === "search" && !wasCovered($("#s-state").value, $("#s-source").value, 0)) runSearch(1);
+  if (tab === "foryou") portal.render();
+  if (tab === "plan") { planDone = false; initPlan(); }
+  if (tab === "saved") renderSaved();
+  startAgent();
+  const m = location.hash.match(/^#c=(.+)$/);
+  if (m && !$("#dlg").open) {
+    const id = decodeURIComponent(m[1]);
+    if (ROWS.some((r) => r[F.ID] === id)) openDetail(id);
+  }
+}
+finishSnapshot.then((full) => {
+  if (full?.complete && !dataComplete) adoptFull(full);
+  else startAgent();
+});

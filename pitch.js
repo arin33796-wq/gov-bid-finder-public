@@ -1,6 +1,7 @@
 import { floridaMap, fmt, usd } from "./charts.js?v=8";
 import { countyOf } from "./florida.js?v=1";
 import { localISODate, addDaysISO, countOpen, liveRenewals } from "./lib.js?v=3";
+import { loadSnapshot } from "./snapshot.js?v=1";
 
 // ---- slide navigation ----
 const slides = [...document.querySelectorAll(".slide")];
@@ -39,18 +40,17 @@ function drawMap() {
 }
 
 const today = localISODate();
-const [data, renewals, vendors, grantsFile] = await Promise.all([
-  fetch("./data.json").then((r) => r.json()),
+const fetchJson = async (file) => {
+  const res = await fetch("./" + file);
+  if (!res.ok) throw new Error(file);
+  return res.json();
+};
+const [renewals, vendors, grantsFile, snap] = await Promise.all([
   fetch("./renewals.json").then((r) => r.json()).catch(() => []),
   fetch("./vendors.json").then((r) => r.json()).catch(() => ({})),
   fetch("./grants.json").then((r) => r.json()).catch(() => ({ grants: [] })),
+  loadSnapshot(fetchJson),
 ]);
-const SRC = data.meta.dicts.sources, CITY = 8;
-const open = data.rows.filter((r) => r[DUE] >= today);
-setStat("open", countOpen(data.rows, DUE, today).toLocaleString());
-const values = open.map((r) => r[VALUE]).filter(Boolean).sort((a, b) => a - b);
-setStat("median", values.length ? usd(values[Math.floor(values.length / 2)]) : "n/a");
-setStat("fl", open.filter((r) => r[STATE] === "FL").length.toLocaleString());
 
 // R.END = 1, R.AMT = 2, R.STATE = 5 in renewals.json (see R in app.js).
 const yearOut = addDaysISO(365);
@@ -61,11 +61,30 @@ setStat("flRenewCount", flRenew.length.toLocaleString());
 const companies = new Set();
 for (const list of Object.values(vendors)) for (const v of list) companies.add(v[0]);
 setStat("companies", fmt(companies.size));
-setStat("awards", fmt(data.meta.awards_by_month.reduce((a, m) => a + m.value, 0)));
-
-byCounty = {};
-for (const r of open) if (r[STATE] === "FL") { const c = countyOf(r[CITY], SRC[r[10]]); if (c) byCounty[c] = (byCounty[c] || 0) + 1; }
-setStat("miami", (byCounty["Miami-Dade"] || 0).toLocaleString());
-setStat("mdcBids", open.filter((r) => SRC[r[10]] === "miami-dade").length.toLocaleString());
+setStat("awards", fmt(snap.priority.meta.awards_by_month.reduce((a, m) => a + m.value, 0)));
 setStat("grants", grantsFile.grants.filter((g) => !g.closes || g.closes >= today).length.toLocaleString());
-if (slides[at].querySelector("#deck-map")) drawMap();
+
+const CITY = 8;
+// Florida figures are complete in the priority file. The nationwide open count
+// and the median award wait, so a short number is never shown as the total.
+function paintContracts(data, totals) {
+  const SRC = data.meta.dicts.sources;
+  const open = data.rows.filter((r) => r[DUE] >= today);
+  const flOpen = open.filter((r) => r[STATE] === "FL");
+  setStat("fl", flOpen.length.toLocaleString());
+  byCounty = {};
+  for (const r of flOpen) { const c = countyOf(r[CITY], SRC[r[10]]); if (c) byCounty[c] = (byCounty[c] || 0) + 1; }
+  setStat("miami", (byCounty["Miami-Dade"] || 0).toLocaleString());
+  setStat("mdcBids", open.filter((r) => SRC[r[10]] === "miami-dade").length.toLocaleString());
+  if (totals) {
+    setStat("open", countOpen(data.rows, DUE, today).toLocaleString());
+    const values = open.map((r) => r[VALUE]).filter(Boolean).sort((a, b) => a - b);
+    setStat("median", values.length ? usd(values[Math.floor(values.length / 2)]) : "n/a");
+  }
+  if (slides[at].querySelector("#deck-map")) drawMap();
+}
+paintContracts(snap.priority, snap.complete);
+if (!snap.complete) {
+  const full = await snap.finish();
+  if (full.complete) paintContracts(full, true);
+}
