@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { localISODate, addDaysISO, daysBetween, isSetAside, countOpen, liveRenewals, recentMonths, coverageSkewed, emailText } from "../lib.js";
+import { localISODate, addDaysISO, daysBetween, isSetAside, countOpen, liveRenewals, recentMonths, coverageSkewed, emailText, naicsSupportsTrade, noticeMatchesTrade, isResearchGrant, grantMatchesTrade, grantDeadlinePhrase, emptyMatchAdvice } from "../lib.js";
 
 test("localISODate uses the local calendar day, not UTC", () => {
   // 11pm local: toISOString() would already read the next day in any US zone.
@@ -60,6 +60,74 @@ test("coverageSkewed flags a final month that dwarfs the rest", () => {
   assert.equal(coverageSkewed(skewed), true);
   assert.equal(coverageSkewed([{ value: 1 }, { value: 100 }]), false, "too few months to judge");
   assert.equal(coverageSkewed([{ value: 0 }, { value: 0 }, { value: 50 }]), false, "zero median");
+});
+
+test("naicsSupportsTrade ignores a stem that is only a side activity", () => {
+  assert.equal(naicsSupportsTrade("Painting and Wall Covering Contractors", ["paint"]), true);
+  assert.equal(naicsSupportsTrade("Paint, Coating, and Adhesive Manufacturing", ["paint"]), true);
+  assert.equal(naicsSupportsTrade("Highway, Street, and Bridge Construction", ["construction", "renovation"]), true);
+  assert.equal(naicsSupportsTrade("Other Heavy and Civil Engineering Construction", ["construction"]), true);
+  assert.equal(naicsSupportsTrade("Process, Physical Distribution, and Logistics Consulting Services", ["consult"]), true);
+  // The only Florida notice a painter used to see: a fire-apparatus intercom.
+  assert.equal(naicsSupportsTrade("Automotive Body, Paint, and Interior Repair and Maintenance", ["paint"]), false);
+  assert.equal(naicsSupportsTrade("", ["paint"]), false);
+  assert.equal(noticeMatchesTrade("interior painting of a barracks", "Something Else", ["paint"]), true);
+  assert.equal(noticeMatchesTrade("FIRE APPARATUS INTERCOM SYSTEM", "Automotive Body, Paint, and Interior Repair and Maintenance", ["paint"]), false);
+  assert.equal(noticeMatchesTrade("install the system", "Painting and Wall Covering Contractors", ["paint"]), true);
+  assert.equal(noticeMatchesTrade("anything", "", []), true, "no trade selected matches every notice");
+});
+
+test("research activity codes outside the old digit bands are hidden", () => {
+  const g = (title, agency = "Centers for Disease Control and Prevention") => ({ title, agency });
+  assert.equal(isResearchGrant(g("National Center for Construction Safety and Health Research and Translation (U54)")), true);
+  assert.equal(isResearchGrant(g("Occupational Safety and Health Training Project Grants (T03)")), true);
+  assert.equal(isResearchGrant(g("NIOSH Miner Safety and Health Training Program - Western United States – U60")), true);
+  assert.equal(isResearchGrant(g("Occupational Safety and Health Education and Research Centers (T42)")), true);
+  assert.equal(isResearchGrant(g("Vet-LIRN Capacity-Building Project and Equipment Grants (U18)", "Food and Drug Administration")), true);
+  assert.equal(isResearchGrant(g("Glioblastoma Therapeutics Network (U19 Clinical Trial Required)", "National Institutes of Health")), true);
+  assert.equal(isResearchGrant(g("Community Food Projects FY27", "Department of Agriculture")), false);
+  assert.equal(isResearchGrant(g("Accelerating Scale-up and Pre-piloting of Emerging Chemical Technologies (ASPECT)", "Golden Field Office")), false);
+});
+
+test("grantMatchesTrade uses the title, not an incidental description", () => {
+  const aspect = { title: "Accelerating Scale-up and Pre-piloting of Emerging Chemical Technologies (ASPECT)", categories: ["Energy"], desc: "updated the definition of construction and demolition waste" };
+  const center = { title: "National Center for Construction Safety and Health Research and Translation (U54)", categories: ["Health"], desc: "" };
+  assert.equal(grantMatchesTrade(aspect, ["construction", "renovation"]), false);
+  assert.equal(grantMatchesTrade(center, ["construction", "renovation"]), true);
+  assert.equal(grantMatchesTrade({ title: "Community Food Projects", categories: ["Food and Nutrition"] }, ["construction"]), false);
+  assert.equal(grantMatchesTrade(center, []), false);
+});
+
+test("grantDeadlinePhrase never prints null or NaN", () => {
+  assert.equal(grantDeadlinePhrase(null), "deadline not listed");
+  assert.equal(grantDeadlinePhrase(undefined), "deadline not listed");
+  assert.equal(grantDeadlinePhrase(Number.NaN), "deadline not listed");
+  assert.equal(grantDeadlinePhrase(null, true), "expected soon");
+  assert.equal(grantDeadlinePhrase(0, true), "closes today");
+  assert.equal(grantDeadlinePhrase(1), "1 day left");
+  assert.equal(grantDeadlinePhrase(12), "12 days left");
+  assert.equal(grantDeadlinePhrase(-3), "closed");
+});
+
+test("emptyMatchAdvice keeps only suggestions with a real positive count", () => {
+  const advice = emptyMatchAdvice({
+    subject: "“paint” notices",
+    place: "Florida",
+    suggestions: [
+      { id: "nationwide", label: "Nationwide", count: 11, kind: "widen" },
+      { id: "florida", label: "Florida", count: 0, kind: "widen" },
+      { id: "nowhere", label: "Nowhere", count: Number.NaN },
+      { id: "blank", label: "", count: 4 },
+      { id: "consulting", label: "Consulting", count: 13, kind: "trade" },
+      { id: "construction", label: "Construction", count: 9, kind: "trade" },
+      { id: "medical", label: "Medical", count: 6, kind: "trade" },
+      { id: "security", label: "Security", count: 5, kind: "trade" },
+    ],
+  });
+  assert.equal(advice.title, "No open “paint” notices in Florida.");
+  assert.deepEqual(advice.widen.map((s) => s.id), ["nationwide"]);
+  assert.deepEqual(advice.trades.map((s) => s.count), [13, 9, 6]);
+  assert.equal(emptyMatchAdvice({ subject: "notices" }).title, "No open notices.");
 });
 
 test("emailText renders a pasteable draft", () => {

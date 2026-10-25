@@ -95,10 +95,13 @@ main{padding-block:28px 64px;padding-left:max(24px,env(safe-area-inset-left,0px)
 .tile .label{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
 .tile .value{font-family:var(--font-display);font-size:40px;font-weight:500;letter-spacing:-0.02em;line-height:1;font-variant-numeric:lining-nums tabular-nums}
 .tile .sub{color:var(--text-secondary);font-size:12.5px;margin-top:8px}
-.charts{grid-template-columns:repeat(auto-fit,minmax(360px,1fr))}
+/* WHY min(360px, 100%): a hard 360px column is wider than the content area
+   on a phone and on a 768px screen forced two columns that overflowed. */
+.charts{grid-template-columns:repeat(auto-fit,minmax(min(360px,100%),1fr))}
 .chart-title{font-family:var(--font-display);font-size:21px;font-weight:500;letter-spacing:-0.01em;margin:0 0 4px}
 .chart-sub{color:var(--text-secondary);font-size:13px;margin:0 0 16px;max-width:62ch}
-svg{display:block;width:100%;overflow:visible}
+svg{display:block;width:100%;max-width:100%;overflow:visible}
+.plot{min-width:0;max-width:100%;overflow:hidden}
 .bar{transition:opacity .12s}
 .bar-row:hover .bar{opacity:.78}
 .tick{fill:var(--muted);font-size:11px;font-family:var(--font-mono)}
@@ -127,7 +130,7 @@ svg{display:block;width:100%;overflow:visible}
 .meta{display:flex;gap:10px;flex-wrap:wrap;color:var(--text-secondary);font-size:12.5px;align-items:center}
 .meta .sep{color:var(--axis)}
 .snippet{color:var(--text-secondary);margin-top:8px;font-size:13.5px;max-width:90ch;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.tag{font-family:var(--font-mono);border:1px solid var(--border);border-radius:3px;padding:1px 7px;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--text-secondary);white-space:nowrap}
+.tag{font-family:var(--font-mono);border:1px solid var(--border);border-radius:3px;padding:1px 7px;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--text-secondary);white-space:normal;overflow-wrap:anywhere}
 .tag.setaside{color:var(--series-3);border-color:color-mix(in srgb,var(--series-3) 40%,transparent)}
 .due{font-weight:600;font-variant-numeric:tabular-nums}
 .due.soon{color:var(--critical)} .due.warn{color:var(--serious)}
@@ -136,11 +139,15 @@ svg{display:block;width:100%;overflow:visible}
 .score .meter span{display:block;height:100%;background:var(--series-1)}
 
 /* Dialog */
-dialog{border:1px solid var(--border);border-radius:10px;padding:0;max-width:880px;width:calc(100% - 40px);background:var(--surface-1);color:var(--text-primary);box-shadow:0 40px 120px rgba(0,0,0,.45)}
+/* WHY 24px: 12px of air on each side. A percentage width tracked the dialog's
+   own min-content (about 780px of title and facts) and widened the page. */
+dialog{border:1px solid var(--border);border-radius:10px;padding:0;width:min(880px,calc(100vw - 24px));max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);overflow:auto;box-sizing:border-box;background:var(--surface-1);color:var(--text-primary);box-shadow:0 40px 120px rgba(0,0,0,.45)}
 dialog::backdrop{background:rgba(4,8,9,.62);backdrop-filter:blur(3px)}
 .dlg-head{padding:22px 26px 16px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface-1);border-radius:10px 10px 0 0}
 .dlg-body{padding:20px 26px 28px;max-height:70vh;overflow:auto}
-.dlg-head h2{margin:0 0 10px;font-family:var(--font-display);font-weight:500;font-size:24px;line-height:1.2;padding-right:40px}
+.dlg-head,.dlg-body{min-width:0;max-width:100%;box-sizing:border-box}
+.dlg-head h2{margin:0 0 10px;font-family:var(--font-display);font-weight:500;font-size:24px;line-height:1.2;padding-right:40px;overflow-wrap:anywhere}
+.kv dd,.snippet,.opp h3{overflow-wrap:anywhere}
 .close{position:absolute;top:16px;right:18px}
 .kv{display:grid;grid-template-columns:160px 1fr;gap:8px 16px;font-size:13.5px;margin:14px 0}
 .kv dt{color:var(--muted);font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding-top:2px} .kv dd{margin:0}
@@ -164,6 +171,10 @@ table.data td{padding:9px 8px;border-bottom:1px solid var(--grid);font-variant-n
 .tooltip{position:fixed;pointer-events:none;background:var(--surface-1);border:1px solid var(--axis);border-radius:var(--radius);padding:8px 12px;font-size:12.5px;box-shadow:0 12px 32px rgba(0,0,0,.3);z-index:60;opacity:0;transition:opacity .1s}
 .tooltip .t{font-family:var(--font-display);font-size:15px;margin-bottom:2px}
 .empty{text-align:center;color:var(--text-secondary);padding:48px 20px}
+.empty-title{color:var(--text-primary);font-size:16px;margin:0 0 6px}
+.empty-lead{margin:0 0 14px}
+.empty-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}
+.empty-actions .btn{white-space:normal}
 .profile-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 .bar-track{fill:var(--grid);opacity:.5}
 
@@ -203,14 +214,15 @@ rect.today{stroke:var(--series-1);stroke-width:1.5}
 
 /* Portal ("For you") */
 .portal-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;padding:30px 4px 22px}
-.portal-head h1{font-family:var(--font-display);font-weight:500;font-size:clamp(38px,5.6vw,76px);letter-spacing:-0.025em;margin:18px 0 14px;line-height:.98;max-width:18ch}
+.portal-head h1{font-family:var(--font-display);font-weight:500;font-size:clamp(38px,5.6vw,76px);letter-spacing:-0.025em;margin:18px 0 14px;line-height:.98;max-width:18ch;overflow-wrap:anywhere}
 .portal-head h1 .accent{color:var(--series-1)}
 .portal-head .lede{font-size:clamp(16px,1.5vw,19px);color:var(--text-secondary);max-width:60ch;margin:0}
 .map-filters{margin:4px 0 10px}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .how-ranked{max-width:820px;margin-top:6px}.how-ranked summary{cursor:pointer}.how-ranked ul{margin:10px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
 .help-card strong{font-family:var(--font-display);font-weight:500;font-size:19px}
-.portal-head-acts{display:flex;gap:8px;flex-wrap:wrap}
+.portal-head-acts{display:flex;gap:8px;flex-wrap:wrap;max-width:100%}
+#portal-agent{white-space:normal;text-align:center;max-width:100%}
 .portal-grid{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:16px;margin-bottom:8px;align-items:start}
 .help-list{display:flex;flex-direction:column;gap:0}
 .help-card{display:flex;flex-direction:column;gap:3px;text-decoration:none;color:var(--text-primary);padding:14px 0;background:none;border:0;border-bottom:1px solid var(--border);border-radius:0}
@@ -225,7 +237,8 @@ rect.today{stroke:var(--series-1);stroke-width:1.5}
 .grant-acts .btn{padding:6px 12px;font-size:12.5px}
 
 /* Welcome quiz */
-#quiz{max-width:640px}
+#quiz{width:min(640px,calc(100vw - 24px));max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);overflow:auto;box-sizing:border-box}
+.quiz,.q-card span,.pick span{overflow-wrap:anywhere}
 .quiz{padding:24px 28px 26px;display:flex;flex-direction:column;gap:14px}
 .quiz-top{display:flex;align-items:center;gap:14px}
 .quiz-top .brand{font-size:19px}
@@ -290,32 +303,36 @@ rect.today{stroke:var(--series-1);stroke-width:1.5}
 .action-note{color:var(--text-secondary)}
 @media (prefers-reduced-motion: reduce){ .agent-log li,.slide.active,.panel.active,.live-dot{animation:none} }
 
-/* Mid widths: keep the header on one line */
-@media (max-width: 1040px) and (min-width: 761px){
-  header.top{gap:8px;padding-left:max(14px,env(safe-area-inset-left,0px));padding-right:max(14px,env(safe-area-inset-right,0px))}
-  nav.tabs button{padding:7px 8px}
-}
-/* WHY: with the Agent tab and a shortlist count the header outgrew one line, and the
-   viewer can scale the page, so a width breakpoint alone is unreliable. On desktop the
-   header never wraps: the tab row shrinks and scrolls sideways instead. */
-@media (min-width: 761px){
-  header.top{flex-wrap:nowrap}
-  nav.tabs{min-width:0;overflow-x:auto;scrollbar-width:none}
+/* WHY 1180: measured with the data pill visible, the nine tabs are about 727px
+   and the last one was clipped. Below this the tabs take their own row. */
+@media (max-width: 1180px){
+  header.top{flex-wrap:wrap;row-gap:6px}
+  .spacer{display:none}
+  /* WHY order 1 then 2: the theme button followed the pill in the markup, so on a
+     375px row the pill took the leftover width and the theme sat on a row by itself. */
+  #theme-toggle{order:1;flex:0 0 auto}
+  .pitch-btn{order:3;flex:0 0 auto}
+  nav.tabs{order:5;flex:1 0 100%;min-width:0;max-width:100%;overflow-x:auto;scrollbar-width:thin;gap:0;padding-bottom:2px}
   nav.tabs button{white-space:nowrap}
-  nav.tabs button[aria-selected="true"]::after{bottom:-1px}
-  #pill-data{min-width:0;overflow:hidden;text-overflow:ellipsis}
+  nav.tabs button[aria-selected="true"]::after{bottom:0}
+  /* WHY flex-basis 0: a content-sized pill filled the first row and pushed the
+     theme button down. It grows into whatever space brand and theme leave. */
+  #pill-data{order:2;flex:1 1 0;min-width:0;max-width:42vw;overflow:hidden;text-overflow:ellipsis}
 }
-@media (max-width: 1180px) and (min-width: 761px){
-  #pill-data{display:none}
+/* WHY 1181: one line once brand, pill, pitch, theme and the tabs fit together.
+   WHY 9px / 160px: 12px of tab padding plus a full pill clipped About near 1280. */
+@media (min-width: 1181px){
+  header.top{flex-wrap:nowrap;gap:12px}
+  nav.tabs{flex:1 1 auto;min-width:0;overflow-x:auto;scrollbar-width:thin}
+  nav.tabs button{white-space:nowrap;padding:7px 9px}
+  nav.tabs button[aria-selected="true"]::after{left:9px;right:9px;bottom:-13px}
+  #pill-data{flex:0 1 160px;min-width:0;max-width:160px;overflow:hidden;text-overflow:ellipsis}
 }
 
 /* Mobile */
 @media (max-width: 760px){
   header.top{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));gap:8px}
-  nav.tabs{order:3;width:100%;overflow-x:auto;gap:0}
-  nav.tabs button{padding:6px 10px;font-size:13px;white-space:nowrap}
-  nav.tabs button[aria-selected="true"]::after{bottom:0}
-  .spacer{display:none}
+  nav.tabs button{padding:6px 10px;font-size:13px}
   main{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 48px}
   .charts,.heat,.agent-grid,.portal-grid{grid-template-columns:1fr}
   .quiz{padding:18px}
@@ -326,15 +343,18 @@ rect.today{stroke:var(--series-1);stroke-width:1.5}
   .tiles > .card:nth-child(-n+2){border-top:0}
   .tiles > .card:nth-child(even){border-left:1px solid var(--border)}
   .tile .value{font-size:30px}
-  .filters{gap:6px}
-  .filters input[type=search]{min-width:100%}
-  .filters select{flex:1;min-width:120px}
-  dialog{width:calc(100% - 16px);max-height:92vh}
-  .dlg-body{padding:16px;max-height:78vh}
+  /* WHY two columns: a select's min-content is its longest option, which
+     overflowed a 375px row when the filters stayed a wrapping flex line. */
+  .filters{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}
+  .filters input[type=search],.filters label{grid-column:1 / -1;min-width:0;max-width:100%}
+  .filters select,.filters input{width:100%;min-width:0;max-width:100%;box-sizing:border-box}
+  .dlg-body{padding:16px;max-height:none}
   .kv{grid-template-columns:1fr;gap:2px 0}
   .kv dt{margin-top:8px}
   .opp h3{font-size:15px}
   .card{padding:18px}
+  .portal-head-acts{width:100%}
+  .portal-head-acts .btn{flex:1 1 auto}
 }
 
 /* Result card action button */

@@ -1,6 +1,6 @@
 // The Grants tab: federal grants open to small businesses, nonprofits and
 // individuals, from grants.json (built daily from Grants.gov).
-import { filterGrants } from "./lib.js?v=3";
+import { filterGrants, emptyMatchAdvice, grantDeadlinePhrase } from "./lib.js?v=5";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -14,9 +14,9 @@ export function initGrants(ctx) {
 
   function grantCard(g) {
     const days = g.closes ? ctx.daysLeft(g.closes) : null;
-    const when = g.status === "forecast" && !g.closes ? '<span class="due">expected soon</span>'
-      : days === 0 ? '<span class="due soon">closes today</span>'
-      : `<span class="due ${days <= 7 ? "soon" : days <= 21 ? "warn" : ""}">${days} day${days === 1 ? "" : "s"} left</span>`;
+    const phrase = grantDeadlinePhrase(days, g.status === "forecast");
+    const tone = !Number.isFinite(days) || days < 0 ? "" : days <= 7 ? " soon" : days <= 21 ? " warn" : "";
+    const when = `<span class="due${tone}">${phrase}</span>`;
     const amount = g.ceiling ? `up to ${ctx.money(g.ceiling)}` : "";
     return `<article class="opp grant" style="padding-right:16px">
       <h3>${esc(g.title)}</h3>
@@ -40,7 +40,20 @@ export function initGrants(ctx) {
     }
     page = p;
     $("#g-count").textContent = hits.length ? `${hits.length.toLocaleString()} grants — showing ${Math.min(p * 20, hits.length)}` : "";
-    if (!hits.length) { $("#g-list").innerHTML = '<div class="empty">No open grants match. Try another category or clear the search.</div>'; $("#g-more").hidden = true; return; }
+    if (!hits.length) {
+      const q = $("#g-q").value.trim();
+      const narrowed = q || $("#g-who").value || $("#g-cat").value || !$("#g-research").checked;
+      const openAll = filterGrants(GRANTS, { hideResearch: true, today: ctx.localISODate() }).length;
+      $("#g-list").innerHTML = ctx.emptyHtml(emptyMatchAdvice({
+        subject: q ? `grants matching “${q}”` : "grants",
+        suggestions: narrowed ? [{ id: "grants-clear", label: "All open grants", count: openAll, kind: "widen" }] : [],
+      }));
+      $("#g-list").querySelectorAll("[data-empty=grants-clear]").forEach((b) => b.onclick = () => {
+        $("#g-q").value = ""; $("#g-who").value = ""; $("#g-cat").value = ""; $("#g-research").checked = true; run(1);
+      });
+      $("#g-more").hidden = true;
+      return;
+    }
     $("#g-list").insertAdjacentHTML("beforeend", hits.slice((p - 1) * 20, p * 20).map(grantCard).join(""));
     $("#g-more").hidden = p * 20 >= hits.length;
   }

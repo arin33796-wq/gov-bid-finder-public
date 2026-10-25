@@ -1,8 +1,8 @@
-import { hbar, vbar, line, card, fmt, usd, stateMap, floridaMap, calendarHeat } from "./charts.js?v=8";
-import { localISODate, addDaysISO, daysBetween, isSetAside, countOpen, liveRenewals, recentMonths, coverageSkewed, emailText } from "./lib.js?v=3";
-import { initAgent } from "./agent.js?v=6";
-import { initPortal } from "./portal.js?v=6";
-import { initGrants } from "./grants.js?v=1";
+import { hbar, vbar, line, card, fmt, usd, stateMap, floridaMap, calendarHeat } from "./charts.js?v=9";
+import { localISODate, addDaysISO, daysBetween, isSetAside, countOpen, liveRenewals, recentMonths, coverageSkewed, emailText, naicsSupportsTrade, emptyMatchAdvice, TRADES } from "./lib.js?v=5";
+import { initAgent } from "./agent.js?v=8";
+import { initPortal } from "./portal.js?v=9";
+import { initGrants } from "./grants.js?v=3";
 import { countyOf } from "./florida.js?v=1";
 
 const $ = (s) => document.querySelector(s);
@@ -128,7 +128,13 @@ function filtered({ state, src, sa, days, q, dep, ty, us, sort }) {
     if (ty && type(r) !== ty) continue;
     if (sa === "small" ? !setaside(r) : sa && setaside(r) !== sa) continue;
     if (us && !r[F.US]) continue;
-    if (terms.length) { const h = HAY[i]; if (!terms.every((t) => h.includes(t))) continue; }
+    // The industry name is not always the trade. "Paint" inside auto-body repair
+    // is a side activity, so it only counts when the industry actually supports it.
+    if (terms.length) {
+      const text = (r[F.TITLE] + " " + r[F.SNIP] + " " + dept(r) + " " + r[F.NAICS]).toLowerCase();
+      const name = naicsName(r[F.NAICS]);
+      if (!terms.every((t) => text.includes(t) || naicsSupportsTrade(name, [t]))) continue;
+    }
     out.push(r);
   }
   if (sort === "value") {
@@ -184,6 +190,25 @@ function renderDashboard() {
     ["Reserved for small business", small.toLocaleString(), `of ${rows.length.toLocaleString()} shown`],
     ["Awarded, last 12 months", usd(awards12), `${months.reduce((a, b) => a + b.value, 0).toLocaleString()} contracts on record`],
   ].map(([l, v, s]) => `<div class="card tile"><div class="label">${l}</div><div class="value">${v}</div><div class="sub">${s}</div></div>`).join("");
+  const dashEmpty = $("#dash-empty");
+  if (dashEmpty) dashEmpty.remove();
+  if (!rows.length) {
+    const src = $("#d-source").value, sa = $("#d-setaside").value, days = Number($("#d-days").value) || 0, st = $("#d-state").value;
+    const suggestions = [];
+    if (st) suggestions.push({ id: "dash-nationwide", label: "Nationwide", count: filtered({ state: "", src, sa, days }).length, kind: "widen" });
+    if (days) suggestions.push({ id: "dash-deadline", label: "Any deadline", count: filtered({ state: st, src, sa, days: 0 }).length, kind: "widen" });
+    if (sa) suggestions.push({ id: "dash-anyone", label: "All notices", count: filtered({ state: st, src, sa: "", days }).length, kind: "widen" });
+    const banner = document.createElement("div");
+    banner.id = "dash-empty";
+    banner.innerHTML = emptyHtml(emptyMatchAdvice({ subject: "notices", place: st ? stateName(st) : "", suggestions }));
+    $("#tiles").after(banner);
+    banner.querySelectorAll("[data-empty]").forEach((b) => b.onclick = () => {
+      if (b.dataset.empty === "dash-nationwide") $("#d-state").value = "";
+      if (b.dataset.empty === "dash-deadline") $("#d-days").value = "";
+      if (b.dataset.empty === "dash-anyone") $("#d-setaside").value = "";
+      renderDashboard();
+    });
+  }
 
   const host = $("#charts"); host.innerHTML = "";
   const pending = [];
@@ -253,6 +278,43 @@ addEventListener("resize", () => { clearTimeout(window._rz); window._rz = setTim
 
 // ---- search ----
 let page = 1, hits = [];
+function emptyHtml(advice) {
+  const button = (s, attr) => `<button type="button" class="btn ghost" ${attr}="${esc(s.id)}">${esc(s.label)} · ${s.count.toLocaleString("en-US")} open</button>`;
+  const lead = advice.widen.length && advice.trades.length
+    ? "Widen the search, or try a trade that has results."
+    : advice.widen.length ? "Widen the search."
+    : advice.trades.length ? "Try a trade that has results." : "";
+  return `<div class="empty"><p class="empty-title">${esc(advice.title)}</p>${lead ? `<p class="empty-lead">${esc(lead)}</p>` : ""}<div class="empty-actions">${advice.widen.map((s) => button(s, "data-empty")).join("")}${advice.trades.map((s) => button(s, "data-empty-trade")).join("")}</div></div>`;
+}
+function searchBase() {
+  return {
+    q: $("#s-q").value, src: $("#s-source").value, dep: $("#s-dept").value, ty: $("#s-type").value,
+    sa: $("#s-setaside").value, us: $("#s-us").checked, sort: $("#s-sort").value,
+  };
+}
+function searchAdvice() {
+  const q = $("#s-q").value.trim();
+  const state = $("#s-state").value;
+  const base = searchBase();
+  const ql = q.toLowerCase();
+  const suggestions = [];
+  if (state) suggestions.push({ id: "nationwide", label: "Nationwide", count: filtered({ ...base, state: "" }).length, kind: "widen" });
+  if (state && state !== "FL") suggestions.push({ id: "florida", label: "Florida", count: filtered({ ...base, state: "FL" }).length, kind: "widen" });
+  const trades = TRADES
+    .filter((t) => !t.stems.some((s) => ql === s || ql.includes(s)))
+    .map((t) => ({ id: t.id, label: t.label, kind: "trade", count: filtered({ ...base, q: t.stems[0], state }).length }))
+    .sort((a, b) => b.count - a.count);
+  return emptyMatchAdvice({
+    subject: q ? `“${q}” notices` : "notices",
+    place: state ? stateName(state) : "",
+    suggestions: [...suggestions, ...trades],
+  });
+}
+function applyEmpty(id) {
+  if (id === "nationwide") $("#s-state").value = "";
+  if (id === "florida") $("#s-state").value = "FL";
+  runSearch(1);
+}
 function dueHtml(d) {
   const n = daysLeft(d);
   const cls = n <= 3 ? "soon" : n <= 10 ? "warn" : "";
@@ -287,7 +349,18 @@ function runSearch(p = 1) {
   page = p;
   const host = $("#s-results");
   if (p === 1) host.innerHTML = "";
-  if (!hits.length) { host.innerHTML = '<div class="empty">No notices match. Try fewer filters or a broader word.</div>'; $("#s-count").textContent = ""; $("#s-more").hidden = true; return; }
+  if (!hits.length) {
+    host.innerHTML = emptyHtml(searchAdvice());
+    host.querySelectorAll("[data-empty]").forEach((b) => b.onclick = () => applyEmpty(b.dataset.empty));
+    host.querySelectorAll("[data-empty-trade]").forEach((b) => b.onclick = () => {
+      const t = TRADES.find((x) => x.id === b.dataset.emptyTrade);
+      if (t) $("#s-q").value = t.stems[0];
+      runSearch(1);
+    });
+    $("#s-count").textContent = "";
+    $("#s-more").hidden = true;
+    return;
+  }
   const slice = hits.slice((p - 1) * 25, p * 25);
   $("#s-count").textContent = `${hits.length.toLocaleString()} notices — showing ${Math.min(p * 25, hits.length).toLocaleString()}`;
   host.insertAdjacentHTML("beforeend", slice.map(oppCard).join(""));
@@ -300,8 +373,9 @@ $("#s-q").addEventListener("input", () => { clearTimeout(window._sq); window._sq
 $("#s-more").onclick = () => runSearch(page + 1);
 function jump(f) {
   document.querySelector("[data-tab=search]").click();
-  if (f.q) $("#s-q").value = f.q;
+  if (f.q != null) $("#s-q").value = f.q;
   if (f.dept) $("#s-dept").value = f.dept;
+  if (f.state != null) $("#s-state").value = f.state;
   runSearch(1);
 }
 
@@ -481,8 +555,8 @@ function openDetail(id) {
   const sh = $("#share-opp");
   if (sh) sh.addEventListener("click", async () => {
     const link = `${location.origin}${location.pathname}#c=${r[F.ID]}`;
-    try { await navigator.clipboard.writeText(link); sh.textContent = "\u2713 Copied"; }
-    catch { sh.textContent = link.slice(0, 40); }
+    const ok = await copyText(link, $("#dlg") || document.body);
+    sh.textContent = ok ? "\u2713 Copied" : "Couldn't copy";
     setTimeout(() => { sh.textContent = "Copy link"; }, 1800);
   });
   location.hash = "c=" + r[F.ID];
@@ -593,7 +667,26 @@ function renderRenewals(p = 1) {
     $("#r-list").innerHTML = "";
   }
   rPage = p;
-  if (!rHits.length) { $("#r-list").innerHTML = '<div class="empty">Nothing expiring in that window. Widen the filters.</div>'; $("#r-count").textContent = ""; $("#r-more").hidden = true; return; }
+  if (!rHits.length) {
+    const months = Number($("#r-window").value);
+    const trade = $("#r-trade").value, state = $("#r-state").value;
+    const cutoff = months ? addDaysISO(Math.round(months * 30.44)) : "9999";
+    const inWindow = (r, st) => r[R.END] <= cutoff && (!trade || r[R.TRADE] === trade) && (!st || r[R.STATE] === st);
+    const suggestions = [];
+    if (state) suggestions.push({ id: "renew-nationwide", label: "Nationwide", count: RENEWALS.filter((r) => inWindow(r, "")).length, kind: "widen" });
+    if (months) suggestions.push({ id: "renew-anytime", label: "Any time", count: RENEWALS.filter((r) => (!trade || r[R.TRADE] === trade) && (!state || r[R.STATE] === state)).length, kind: "widen" });
+    if (trade) suggestions.push({ id: "renew-all-trades", label: "All trades", count: RENEWALS.filter((r) => r[R.END] <= cutoff && (!state || r[R.STATE] === state)).length, kind: "widen" });
+    $("#r-list").innerHTML = emptyHtml(emptyMatchAdvice({ subject: "expiring contracts", place: state ? stateName(state) : "", suggestions }));
+    $("#r-list").querySelectorAll("[data-empty]").forEach((b) => b.onclick = () => {
+      if (b.dataset.empty === "renew-nationwide") $("#r-state").value = "";
+      if (b.dataset.empty === "renew-anytime") $("#r-window").value = "0";
+      if (b.dataset.empty === "renew-all-trades") $("#r-trade").value = "";
+      renderRenewals(1);
+    });
+    $("#r-count").textContent = "";
+    $("#r-more").hidden = true;
+    return;
+  }
   $("#r-count").textContent = `${rHits.length.toLocaleString()} contracts \u2014 showing ${Math.min(p * 25, rHits.length).toLocaleString()}`;
   $("#r-list").insertAdjacentHTML("beforeend", rHits.slice((p - 1) * 25, p * 25).map((r) => {
     const d = daysLeft(r[R.END]);
@@ -655,10 +748,11 @@ updateSavedCount();
   if (m && ROWS.some((r) => r[F.ID] === decodeURIComponent(m[1]))) openDetail(decodeURIComponent(m[1]));
 }
 
-const grantsUI = initGrants({ daysLeft, money, localISODate });
+const grantsUI = initGrants({ daysLeft, money, localISODate, emptyHtml });
 const portal = initPortal({
-  F, rows: ROWS, hay: HAY, store, localISODate, daysLeft, setaside, source,
+  F, rows: ROWS, hay: HAY, store, localISODate, daysLeft, setaside, source, naicsName,
   oppCard, openDetail, openVendors, grants: () => grantsUI.all(), grantCard: (g) => grantsUI.grantCard(g),
+  emptyHtml, jump,
   onProfile: (p) => agent.setProfile(p),
 });
 const agent = initAgent({

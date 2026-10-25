@@ -1,6 +1,6 @@
-import { floridaMap, fmt, usd } from "./charts.js?v=8";
+import { floridaMap, fmt, usd } from "./charts.js?v=9";
 import { countyOf } from "./florida.js?v=1";
-import { localISODate, addDaysISO, countOpen, liveRenewals } from "./lib.js?v=3";
+import { localISODate, addDaysISO, countOpen, liveRenewals } from "./lib.js?v=5";
 
 // ---- slide navigation ----
 const slides = [...document.querySelectorAll(".slide")];
@@ -23,6 +23,9 @@ addEventListener("keydown", (e) => {
 document.addEventListener("click", (e) => { if (!e.target.closest("a,button,.deck-nav,svg")) show(at + 1); });
 document.getElementById("prev").onclick = () => show(at - 1);
 document.getElementById("next").onclick = () => show(at + 1);
+// Declared before the first show(). The map slide calls drawMap immediately, and a
+// let further down is still in the temporal dead zone, which aborted the whole deck.
+let byCounty = null;
 show(at);
 
 // ---- live numbers, filled in once the snapshot loads ----
@@ -31,7 +34,6 @@ const DUE = 5, STATE = 7, VALUE = 19;
 const STATE_NAME = { AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California", CO: "Colorado", CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia", HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa", KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland", MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi", MO: "Missouri", MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey", NM: "New Mexico", NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio", OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania", RI: "Rhode Island", SC: "South Carolina", SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont", VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming", DC: "Washington, D.C.", PR: "Puerto Rico" };
 const setStat = (k, v) => document.querySelectorAll(`[data-stat="${k}"]`).forEach((n) => { n.textContent = v; });
 
-let byCounty = null;
 function drawMap() {
   const host = document.getElementById("deck-map");
   if (!byCounty) { host.innerHTML = '<div class="empty small">Loading…</div>'; return; }
