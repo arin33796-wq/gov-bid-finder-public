@@ -1,7 +1,7 @@
-import { hbar, vbar, line, card, fmt, usd, stateMap, floridaMap, calendarHeat } from "./charts.js?v=9";
+import { hbar, vbar, line, card, fmt, usd, stateMap, floridaMap, calendarHeat } from "./charts.js?v=10";
 import { localISODate, addDaysISO, daysBetween, isSetAside, countOpen, liveRenewals, recentMonths, coverageSkewed, emailText, naicsSupportsTrade, emptyMatchAdvice, TRADES } from "./lib.js?v=6";
 import { initAgent } from "./agent.js?v=9";
-import { initPortal } from "./portal.js?v=11";
+import { initPortal } from "./portal.js?v=12";
 import { initGrants } from "./grants.js?v=5";
 import { countyOf } from "./florida.js?v=1";
 

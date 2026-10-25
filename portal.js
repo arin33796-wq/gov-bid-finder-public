@@ -4,8 +4,9 @@
 // free local help that fits.
 import { TRADES, CERTS, profileStems, setAsideAllowed, profileToText, filterGrants, noticeMatchesTrade, grantMatchesTrade, emptyMatchAdvice } from "./lib.js?v=6";
 import { FL_COUNTIES, countyOf, SOUTH_FLORIDA } from "./florida.js?v=1";
-import { floridaMap } from "./charts.js?v=9";
+import { floridaMap } from "./charts.js?v=10";
 import { loadFloridaPrograms, renderLists, verifiedPrograms, closedShown, toggleClosedShown, fitsProfile } from "./florida-programs.js?v=2";
+import { floridaOpportunityCounts } from "./county-counts.js?v=1";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -196,30 +197,39 @@ export function initPortal(ctx) {
       ["Grants for you", myGrants.length, myGrants.length ? "match your trade" : grants.length ? `none name your trade · ${grants.length.toLocaleString("en-US")} open to ${grantAudience}` : "none open right now"],
     ].map(([l, v, s]) => `<div class="card tile"><div class="label">${esc(l)}</div><div class="value">${Number(v).toLocaleString()}</div><div class="sub">${esc(s)}</div></div>`).join("");
 
-    // Florida county heatmap: every open contract for the chosen job type.
-    const byCounty = {};
-    for (const r of pool) { const c = countyOf(r[F.CITY], ctx.source(r)); if (c) byCounty[c] = (byCounty[c] || 0) + 1; }
-    const unmapped = pool.filter((r) => !countyOf(r[F.CITY], ctx.source(r))).length;
+    // Every open Florida contract is the light layer. The chosen job type is darker.
+    // "All jobs" is one layer, because there is no separate trade to shade.
+    const poolSet = new Set(pool);
+    const counts = floridaOpportunityCounts(ctx.rows, {
+      today: ctx.localISODate(),
+      dueOf: (r) => r[F.DUE],
+      isFlorida: (r) => r[F.STATE] === "FL" && r[F.US],
+      countyOf: (r) => countyOf(r[F.CITY], ctx.source(r)),
+      isMatch: (r) => poolSet.has(r),
+    });
+    const layered = trade !== "all";
+    const unmapped = counts.unmapped;
+    const unmappedNote = unmapped ? ` ${unmapped} open Florida notice${unmapped === 1 ? " names" : "s name"} no city, so ${unmapped === 1 ? "it is" : "they are"} not on the map.` : "";
     const mapHost = $("#portal-map");
-    if (!pool.length) {
-      $("#portal-map-sub").textContent = all.length
-        ? "None of these are open in Florida right now. Nationwide matches for your trades are listed below."
-        : "No open contracts in this job type right now.";
+    if (!Object.keys(counts.open).length && !unmapped) {
+      $("#portal-map-sub").textContent = "No open contracts in Florida right now.";
       mapHost.innerHTML = ctx.emptyHtml(emptyMatchAdvice({
         subject: `${tradeName.toLowerCase()} contracts`,
         place: "Florida",
         suggestions: [
-          trade !== "all" ? { id: "portal-all-jobs", label: "All jobs in Florida", count: floridaPool("all", p).length, kind: "widen" } : null,
           trade !== "mine" ? { id: "portal-nationwide", label: "Your trades, nationwide", count: all.length, kind: "widen" } : null,
           ...tradeSuggestions("FL"),
         ].filter(Boolean),
       }));
       wireEmpty(mapHost);
     } else {
-      $("#portal-map-sub").textContent = `Open contracts for ${tradeName.toLowerCase()}, by county. Click a county to filter.${unmapped ? ` ${unmapped} Florida notice${unmapped === 1 ? " names" : "s name"} no city, so ${unmapped === 1 ? "it is" : "they are"} not on the map.` : ""}`;
-      requestAnimationFrame(() => floridaMap(mapHost, byCounty, {
+      $("#portal-map-sub").textContent = layered
+        ? `Light orange counts every open contract. Darker orange counts ${tradeName.toLowerCase()}. The outlined number is the open count.${home && !county ? ` ${home} is outlined.` : ""} Click a county to filter.${unmappedNote}`
+        : `Open contracts for all jobs, by county. Click a county to filter.${unmappedNote}`;
+      requestAnimationFrame(() => floridaMap(mapHost, layered ? counts.matched : counts.open, {
+        ...(layered ? { base: counts.open } : { valueLabel: "open contracts (all jobs)" }),
         selected: county || home,
-        valueLabel: `open contracts (${tradeName.toLowerCase()})`, ariaLabel: "Open contracts by Florida county",
+        ariaLabel: "Opportunities in Florida by county",
         onClick: (c) => { $("#pm-county").value = county === c ? "" : c; render(); $("#portal-list").scrollIntoView({ behavior: "smooth", block: "start" }); },
       }));
     }

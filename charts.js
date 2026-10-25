@@ -118,6 +118,9 @@ export function line(host, data, { valueFmt = fmt, valueLabel = "" } = {}) {
 // Five shades of --heat (orange, matching the logo) for heatmaps. Quantile breaks, not linear: one state
 // (Maryland, Virginia) would otherwise turn every other state the palest shade.
 const HEAT_MIX = [16, 34, 52, 72, 94];
+// WHY 2: heatFill(0) is the light base for a county that has open contracts
+// and none in the trade. A trade match starts at this step so it stays darker.
+const MATCH_FLOOR_BIN = 2;
 const heatFill = (bin) => bin < 0 ? "var(--grid)" : `color-mix(in srgb, var(--heat) ${HEAT_MIX[bin]}%, var(--surface-1))`;
 export function quantileBins(values, n = HEAT_MIX.length) {
   const sorted = values.filter((v) => v > 0).sort((a, b) => a - b);
@@ -131,14 +134,27 @@ function heatLegend(host, lo, hi, label) {
   d.innerHTML = `<span>${label}: ${fmt(lo)}</span>${HEAT_MIX.map((_, i) => `<i style="background:${heatFill(i)}"></i>`).join("")}<span>${fmt(hi)}</span>`;
   host.appendChild(d);
 }
+// Two shades, each named for what it counts. The ramp on the right is still
+// --heat via heatFill: more matches step from MATCH_FLOOR_BIN toward the darkest.
+function layerLegend(host) {
+  const d = document.createElement("div");
+  d.className = "heat-legend";
+  d.innerHTML = `<i style="background:${heatFill(0)}"></i><span>All open contracts</span><i style="background:${heatFill(MATCH_FLOOR_BIN)}"></i><i style="background:${heatFill(HEAT_MIX.length - 1)}"></i><span>Match your trade</span>`;
+  host.appendChild(d);
+}
+function opportunityTip(openN, matched) {
+  const matchLabel = matched === 1 ? "1 matches your trade" : `${matched.toLocaleString()} match your trade`;
+  return `${openN.toLocaleString()} open, ${matchLabel}`;
+}
 
 // Choropleth on real outlines (geo.js). `shapes` maps a key to { d, c }: an SVG
 // path and a label point in a `view` = [width, height] coordinate space.
 // The selected area is outlined and called out with its count, so the one county
 // or state the viewer cares about reads at a glance even when it is small.
-export function shapeMap(host, counts, shapes, view, { selected = "", names = {}, notes = {}, valueLabel = "open notices", onClick = null, ariaLabel = "Map", water = [], coast = "", calloutAbove = true } = {}) {
+export function shapeMap(host, counts, shapes, view, { selected = "", names = {}, notes = {}, valueLabel = "open notices", onClick = null, ariaLabel = "Map", water = [], coast = "", calloutAbove = true, base = null } = {}) {
   host.innerHTML = "";
   const [W, H] = view;
+  const useLayers = base != null;
   const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": ariaLabel, class: "shape-map" }, host);
   // WHY scale type with the view: the US map is drawn 60% wider than Florida, so fixed
   // sizes would shrink its labels to unreadable when both render at the same width.
@@ -147,28 +163,40 @@ export function shapeMap(host, counts, shapes, view, { selected = "", names = {}
   const bin = quantileBins(Object.keys(shapes).map((k) => counts[k] || 0));
   const land = el("g", {}, svg);
   for (const [key, { d }] of Object.entries(shapes)) {
-    const v = counts[key] || 0;
-    const path = el("path", { d, fill: heatFill(bin(v)), class: "map-area" + (onClick && v ? " clickable" : "") }, land);
-    hookTip(path, names[key] || key, [`${v.toLocaleString()} ${valueLabel}`, ...(notes[key] ? [notes[key]] : [])]);
-    if (onClick && v) path.addEventListener("click", () => onClick(key));
+    const matched = counts[key] || 0;
+    const openN = useLayers ? (base[key] || 0) : matched;
+    const fill = !useLayers ? heatFill(bin(matched))
+      : matched > 0 ? heatFill(Math.max(MATCH_FLOOR_BIN, bin(matched)))
+      : openN > 0 ? heatFill(0)
+      : heatFill(-1);
+    const clickable = onClick && (useLayers ? openN > 0 || matched > 0 : matched);
+    const path = el("path", { d, fill, class: "map-area" + (clickable ? " clickable" : "") }, land);
+    const lines = useLayers
+      ? [opportunityTip(openN, matched), ...(notes[key] ? [notes[key]] : [])]
+      : [`${matched.toLocaleString()} ${valueLabel}`, ...(notes[key] ? [notes[key]] : [])];
+    hookTip(path, names[key] || key, lines);
+    if (clickable) path.addEventListener("click", () => onClick(key));
   }
   if (coast) el("path", { d: coast, class: "map-coast", fill: "none" }, svg);
   const sel = shapes[selected];
   if (sel) {
     // WHY drawn last: an outline under its neighbours would be half hidden.
     el("path", { d: sel.d, class: "map-sel", fill: "none" }, svg);
-    const [cx, cy] = sel.c, v = counts[selected] || 0;
+    const [cx, cy] = sel.c, shown = useLayers ? (base[selected] || 0) : (counts[selected] || 0);
     // WHY 0.72 / 0.28: past those points a centered label would run off the map edge.
     const anchor = cx > W * 0.72 ? "end" : cx < W * 0.28 ? "start" : "middle";
     const ty = calloutAbove ? Math.max(30, cy - 64) : Math.min(H - 8, cy + 64);
     el("line", { x1: cx, y1: cy, x2: cx, y2: ty + (calloutAbove ? 8 : -24), class: "map-leader" }, svg);
     el("circle", { cx, cy, r: 3.5, class: "map-pin" }, svg);
     const t = el("text", { x: cx, y: ty, "text-anchor": anchor, class: "map-callout" }, svg);
-    el("tspan", { class: "map-callout-n" }, t).textContent = v.toLocaleString();
+    el("tspan", { class: "map-callout-n" }, t).textContent = shown.toLocaleString();
     el("tspan", { dx: 6 }, t).textContent = (names[selected] || selected).replace(/ County$/, "");
   }
-  const vals = Object.keys(shapes).map((k) => counts[k] || 0).filter((v) => v > 0);
-  if (vals.length) heatLegend(host, Math.min(...vals), Math.max(...vals), "Fewer");
+  if (useLayers) layerLegend(host);
+  else {
+    const vals = Object.keys(shapes).map((k) => counts[k] || 0).filter((v) => v > 0);
+    if (vals.length) heatLegend(host, Math.min(...vals), Math.max(...vals), "Fewer");
+  }
 }
 
 const countyNames = Object.fromEntries(Object.keys(FL_SHAPES).map((k) => [k, `${k} County`]));
