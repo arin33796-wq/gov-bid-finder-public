@@ -61,6 +61,16 @@ header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;backgroun
   padding-block:12px;padding-left:max(24px,env(safe-area-inset-left,0px));padding-right:max(24px,env(safe-area-inset-right,0px));display:flex;gap:18px;align-items:center;flex-wrap:wrap}
 .brand{white-space:nowrap;flex-shrink:0;font-family:var(--font-display);font-size:21px;font-weight:600;letter-spacing:-0.01em;display:flex;align-items:center;gap:9px;margin-right:6px}
 .brand .dot{width:7px;height:7px;border-radius:50%;background:var(--series-1);box-shadow:0 0 12px var(--series-1)}
+/* WHY 28px: the header type is 21px and the bar is about 48px tall. The mark
+   replaces the 7px dot and still fits beside "Gov Bid Finder" at 375px. */
+.brand-mark{width:28px;height:28px;display:block;flex:0 0 auto}
+.brand-bid{color:var(--heat)}
+/* WHY a hairline: the mark's palest tiles are #FFE0C2, which disappear into
+   the ice page. Dark navy already separates them, so the ring is light-only. */
+:root[data-theme="light"] .brand-mark{filter:drop-shadow(0 0 .45px rgba(11,20,40,.7))}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]) .brand-mark{filter:drop-shadow(0 0 .45px rgba(11,20,40,.7))}
+}
 nav.tabs{display:flex;gap:2px}
 nav.tabs button{background:none;border:0;padding:7px 12px;color:var(--text-secondary);cursor:pointer;font-size:13.5px;letter-spacing:.01em;position:relative}
 nav.tabs button:hover{color:var(--text-primary)}

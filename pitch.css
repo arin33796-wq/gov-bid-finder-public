@@ -45,3 +45,14 @@ kbd{border:1px solid var(--border);border-bottom-width:2px;border-radius:5px;pad
   .deck-nav,.progress{display:none}
   .slide{display:flex !important;page-break-after:always;min-height:100vh}
 }
+/* Title slide: the heat-tile mark sits in the govbid wordmark. */
+.title-lockup{display:flex;align-items:center;gap:.1em;flex-wrap:wrap}
+/* WHY 0.58em: tied to the title size so the mark scales with "govbid"
+   and still sits on one line beside it at 375px. */
+.title-mark{width:auto;height:.58em}
+/* The deck header is only the brand, so the shared bar stays one line.
+   WHY 52px: 10px of padding plus the 28px mark. Slides fill the screen under it. */
+body.deck header.top{padding-block:10px}
+@media screen{
+  body.deck .slide{min-height:calc(100dvh - 52px)}
+}
