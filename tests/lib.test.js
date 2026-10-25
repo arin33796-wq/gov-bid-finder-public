@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { localISODate, addDaysISO, daysBetween, isSetAside, countOpen, liveRenewals, recentMonths, coverageSkewed, emailText, naicsSupportsTrade, noticeMatchesTrade, isResearchGrant, grantMatchesTrade, emptyMatchAdvice } from "../lib.js";
+import { localISODate, addDaysISO, daysBetween, isSetAside, countOpen, liveRenewals, recentMonths, coverageSkewed, emailText, naicsSupportsTrade, noticeMatchesTrade, isResearchGrant, grantMatchesTrade, grantDeadlinePhrase, emptyMatchAdvice } from "../lib.js";
 
 test("localISODate uses the local calendar day, not UTC", () => {
   // 11pm local: toISOString() would already read the next day in any US zone.
@@ -96,6 +96,17 @@ test("grantMatchesTrade uses the title, not an incidental description", () => {
   assert.equal(grantMatchesTrade(center, ["construction", "renovation"]), true);
   assert.equal(grantMatchesTrade({ title: "Community Food Projects", categories: ["Food and Nutrition"] }, ["construction"]), false);
   assert.equal(grantMatchesTrade(center, []), false);
+});
+
+test("grantDeadlinePhrase never prints null or NaN", () => {
+  assert.equal(grantDeadlinePhrase(null), "deadline not listed");
+  assert.equal(grantDeadlinePhrase(undefined), "deadline not listed");
+  assert.equal(grantDeadlinePhrase(Number.NaN), "deadline not listed");
+  assert.equal(grantDeadlinePhrase(null, true), "expected soon");
+  assert.equal(grantDeadlinePhrase(0, true), "closes today");
+  assert.equal(grantDeadlinePhrase(1), "1 day left");
+  assert.equal(grantDeadlinePhrase(12), "12 days left");
+  assert.equal(grantDeadlinePhrase(-3), "closed");
 });
 
 test("emptyMatchAdvice keeps only suggestions with a real positive count", () => {

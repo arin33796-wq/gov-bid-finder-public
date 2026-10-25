@@ -160,6 +160,15 @@ export function grantMatchesTrade(grant, stems) {
   return stemMatcher(stems)(head);
 }
 
+// A missing close date is `null` from the page, and a date the feed could not
+// parse is NaN. Either one was rendered as "null days left" or "NaN days left".
+export function grantDeadlinePhrase(days, forecast = false) {
+  if (!Number.isFinite(days)) return forecast ? "expected soon" : "deadline not listed";
+  if (days < 0) return "closed";
+  if (days === 0) return "closes today";
+  return `${days} day${days === 1 ? "" : "s"} left`;
+}
+
 // WHY 3: an empty state can name a few real alternatives. More than that is a second list.
 const EMPTY_TRADE_CAP = 3;
 

@@ -4,7 +4,7 @@
 // work, saves picks to the shortlist, and proposes buyer emails. Anything that
 // leaves the page (a Gmail draft) waits for the person to press a button.
 
-import { profileToText, filterGrants, stemMatcher } from "./lib.js?v=4";
+import { profileToText, filterGrants, stemMatcher } from "./lib.js?v=5";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -264,7 +264,13 @@ Only mention contracts that came back from the tools. Never invent ids, numbers 
 
   async function run() {
     const profile = box.value.trim();
-    if (!sample) { status.textContent = "Still connecting to Claude. Try again in a moment."; return; }
+    if (!sample) {
+      const offline = $("#agent-unavailable") && !$("#agent-unavailable").hidden;
+      status.textContent = offline
+        ? "The agent runs from the Claude link. Your description is already in the box."
+        : "Still connecting to Claude. Try again in a moment.";
+      return;
+    }
     if (!profile) { status.textContent = "Describe your business first: trade, city, size, any certifications."; box.focus(); return; }
     ctl?.abort();
     ctl = new AbortController();
@@ -300,11 +306,16 @@ Only mention contracts that came back from the tools. Never invent ids, numbers 
   // The agent needs Claude. Outside a Claude viewer (for example the public GitHub
   // Pages copy) explain where it runs instead of showing a dead button.
   (async () => {
-    const claude = window.claude;
-    sample = claude ? await claude.use("sample").catch(() => null) : null;
-    mcp = claude ? await claude.use("mcp").catch(() => null) : null;
-    const limits = sample ? await sample.limits().catch(() => null) : null;
-    toolsOk = !!limits?.tools;
+    try {
+      const claude = window.claude;
+      sample = claude?.use ? await claude.use("sample").catch(() => null) : null;
+      mcp = claude?.use ? await claude.use("mcp").catch(() => null) : null;
+      const limits = sample ? await sample.limits().catch(() => null) : null;
+      toolsOk = !!limits?.tools;
+    } catch {
+      sample = null;
+      toolsOk = false;
+    }
     if (!sample || !toolsOk) {
       runBtn.disabled = true;
       $("#agent-unavailable").hidden = false;

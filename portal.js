@@ -2,7 +2,7 @@
 // profile in this browser, and everything on the portal is filtered by it: the
 // Florida county heatmap, best-matching contracts, grants, expiring work and the
 // free local help that fits.
-import { TRADES, CERTS, profileStems, stemMatcher, setAsideAllowed, profileToText, filterGrants } from "./lib.js?v=4";
+import { TRADES, CERTS, profileStems, setAsideAllowed, profileToText, filterGrants, noticeMatchesTrade, grantMatchesTrade, emptyMatchAdvice } from "./lib.js?v=5";
 import { FL_COUNTIES, countyOf, SOUTH_FLORIDA } from "./florida.js?v=1";
 import { floridaMap } from "./charts.js?v=8";
 
@@ -80,18 +80,58 @@ export function initPortal(ctx) {
 
   // ---- the portal ----
   const tradeLabel = (p) => [...(p.trades || []).map((id) => TRADES.find((t) => t.id === id)?.label), p.other].filter(Boolean).join(", ");
+  function noticeText(r) {
+    return `${r[F.TITLE]} ${r[F.SNIP]} ${r[F.NAICS]}`.toLowerCase();
+  }
   function matches(p) {
-    const fits = stemMatcher(profileStems(p));
+    const stems = profileStems(p);
     const today = ctx.localISODate();
     const out = [];
     for (let i = 0; i < ctx.rows.length; i++) {
       const r = ctx.rows[i];
       if (r[F.DUE] < today || !r[F.US]) continue;
-      if (!fits(ctx.hay[i])) continue;
+      if (!noticeMatchesTrade(noticeText(r), ctx.naicsName(r[F.NAICS]), stems)) continue;
       if (!setAsideAllowed(ctx.setaside(r), p)) continue;
       out.push(r);
     }
     return out;
+  }
+  // Other trades that actually have open notices, busiest first. Used only when
+  // this profile's own trade came back empty, so the scan is not on the happy path.
+  function tradeSuggestions(state) {
+    const today = ctx.localISODate();
+    const mine = new Set(profileStems(profile));
+    const out = [];
+    for (const t of TRADES) {
+      if (t.stems.some((s) => mine.has(s))) continue;
+      let n = 0;
+      for (const r of ctx.rows) {
+        if (r[F.DUE] < today || !r[F.US]) continue;
+        if (state && r[F.STATE] !== state) continue;
+        if (!noticeMatchesTrade(noticeText(r), ctx.naicsName(r[F.NAICS]), t.stems)) continue;
+        if (!setAsideAllowed(ctx.setaside(r), profile)) continue;
+        n++;
+      }
+      out.push({ id: t.id, label: t.label, count: n, kind: "trade" });
+    }
+    return out.sort((a, b) => b.count - a.count);
+  }
+  function wireEmpty(host) {
+    host.querySelectorAll("[data-empty]").forEach((b) => b.onclick = (e) => {
+      e.stopPropagation();
+      const id = b.dataset.empty;
+      if (id === "portal-florida" || id === "portal-nationwide") {
+        countyFilter = "";
+        render();
+        if (id === "portal-nationwide") $("#portal-list").scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      if (id === "portal-grants") $("#portal-more-grants").click();
+    });
+    host.querySelectorAll("[data-empty-trade]").forEach((b) => b.onclick = (e) => {
+      e.stopPropagation();
+      const t = TRADES.find((x) => x.id === b.dataset.emptyTrade);
+      if (t && ctx.jump) ctx.jump({ q: t.stems[0], state: countyFilter || (profile?.county && profile.county !== "outside" ? "FL" : "") });
+    });
   }
   const rank = (p) => (r) => {
     const c = r[F.STATE] === "FL" ? countyOf(r[F.CITY], ctx.source(r)) : "";
@@ -110,27 +150,44 @@ export function initPortal(ctx) {
     const soon = all.filter((r) => ctx.daysLeft(r[F.DUE]) <= 7).length;
     const grantWho = p.kind === "nonprofit" ? "nonprofit" : p.kind === "exploring" ? "" : "small_business";
     const grants = filterGrants(ctx.grants(), { who: grantWho, q: "", today: ctx.localISODate() });
-    const grantFits = stemMatcher(profileStems(p));
-    const myGrants = profileStems(p).length ? grants.filter((g) => grantFits(`${g.title} ${g.desc}`.toLowerCase())) : [];
+    const stems = profileStems(p);
+    const myGrants = stems.length ? grants.filter((g) => grantMatchesTrade(g, stems)) : [];
+    const grantAudience = grantWho === "nonprofit" ? "nonprofits" : grantWho ? "small businesses" : "anyone";
 
     $("#portal-who").textContent = `${p.kind === "nonprofit" ? "A nonprofit" : "A business"} in ${p.county === "outside" ? "the US" : p.county + " County"}${tradeLabel(p) ? ` · ${tradeLabel(p)}` : ""}`;
     $("#portal-tiles").innerHTML = [
       [p.county === "outside" ? "Nationwide" : `In ${p.county}`, inCounty.length, p.county === "outside" ? "" : "open contracts in your county"],
       ["In Florida", fl.length, "open contracts in your trade"],
       ["Nationwide", all.length, `${soon} closing this week`],
-      ["Grants for you", (myGrants.length || grants.length), myGrants.length ? "match your trade" : `open to ${grantWho === "nonprofit" ? "nonprofits" : "small businesses"}`],
+      ["Grants for you", myGrants.length, myGrants.length ? "match your trade" : grants.length ? `none name your trade · ${grants.length.toLocaleString("en-US")} open to ${grantAudience}` : "none open right now"],
     ].map(([l, v, s]) => `<div class="card tile"><div class="label">${esc(l)}</div><div class="value">${Number(v).toLocaleString()}</div><div class="sub">${esc(s)}</div></div>`).join("");
 
     // Florida county heatmap of contracts in their trade.
     const byCounty = {};
     for (const r of fl) { const c = countyOf(r[F.CITY], ctx.source(r)); if (c) byCounty[c] = (byCounty[c] || 0) + 1; }
     const unmapped = fl.filter((r) => !countyOf(r[F.CITY], ctx.source(r))).length;
-    $("#portal-map-sub").textContent = `Contracts in your trade, by county. ${p.county !== "outside" ? `${p.county} is outlined. ` : ""}Click a county to see its contracts.${unmapped ? ` ${unmapped} Florida notice${unmapped === 1 ? " names" : "s name"} no city, so ${unmapped === 1 ? "it is" : "they are"} not on the map.` : ""}`;
-    requestAnimationFrame(() => floridaMap($("#portal-map"), byCounty, {
-      selected: countyFilter || (p.county !== "outside" ? p.county : ""),
-      valueLabel: "open contracts in your trade", ariaLabel: "Open contracts in your trade by Florida county",
-      onClick: (c) => { countyFilter = countyFilter === c ? "" : c; render(); $("#portal-list").scrollIntoView({ behavior: "smooth", block: "start" }); },
-    }));
+    const mapHost = $("#portal-map");
+    if (!fl.length) {
+      $("#portal-map-sub").textContent = all.length
+        ? "None of these name a Florida county. The nationwide matches are listed below."
+        : "No open contracts in your trade right now.";
+      mapHost.innerHTML = ctx.emptyHtml(emptyMatchAdvice({
+        subject: `${tradeLabel(p) || "matching"} contracts`,
+        place: "Florida",
+        suggestions: [
+          { id: "portal-nationwide", label: "Nationwide", count: all.length, kind: "widen" },
+          ...tradeSuggestions("FL"),
+        ],
+      }));
+      wireEmpty(mapHost);
+    } else {
+      $("#portal-map-sub").textContent = `Contracts in your trade, by county. ${p.county !== "outside" ? `${p.county} is outlined. ` : ""}Click a county to see its contracts.${unmapped ? ` ${unmapped} Florida notice${unmapped === 1 ? " names" : "s name"} no city, so ${unmapped === 1 ? "it is" : "they are"} not on the map.` : ""}`;
+      requestAnimationFrame(() => floridaMap(mapHost, byCounty, {
+        selected: countyFilter || (p.county !== "outside" ? p.county : ""),
+        valueLabel: "open contracts in your trade", ariaLabel: "Open contracts in your trade by Florida county",
+        onClick: (c) => { countyFilter = countyFilter === c ? "" : c; render(); $("#portal-list").scrollIntoView({ behavior: "smooth", block: "start" }); },
+      }));
+    }
 
     // Best matches: their county first, then South Florida, Florida, nationwide.
     const pool = countyFilter ? fl.filter((r) => countyOf(r[F.CITY], ctx.source(r)) === countyFilter) : all;
@@ -140,12 +197,33 @@ export function initPortal(ctx) {
     $("#portal-list-title").textContent = countyFilter ? `Open in ${countyFilter} County` : "Best matches for you";
     $("#portal-clear").hidden = !countyFilter;
     const list = $("#portal-list");
-    list.innerHTML = best.length ? best.map(ctx.oppCard).join("") : `<div class="empty">Nothing open in your trade ${countyFilter ? "in " + esc(countyFilter) : "right now"}. Try the agent, or widen your trades in your profile.</div>`;
+    const place = countyFilter ? `${countyFilter} County` : (!fl.length && p.county !== "outside" ? "Florida" : (!inCounty.length && p.county !== "outside" ? `${p.county} County` : ""));
+    const showGap = !best.length || (!countyFilter && p.county !== "outside" && !inCounty.length) || (!fl.length && p.county !== "outside");
+    const gap = showGap ? ctx.emptyHtml(emptyMatchAdvice({
+      subject: `${tradeLabel(p) || "matching"} contracts`,
+      place: best.length && !countyFilter && inCounty.length ? "" : place,
+      suggestions: [
+        countyFilter || (p.county !== "outside" && !inCounty.length && fl.length) ? { id: "portal-florida", label: "All of Florida", count: fl.length, kind: "widen" } : null,
+        { id: "portal-nationwide", label: "Nationwide", count: all.length, kind: "widen" },
+        ...(!best.length || !fl.length ? tradeSuggestions(countyFilter || p.county !== "outside" ? "FL" : "") : []),
+      ].filter(Boolean),
+    })) : "";
+    // A county with nothing still lists the wider matches underneath the note,
+    // so the zeros in the tiles are explained instead of looking like a broken page.
+    list.innerHTML = (best.length ? gap : "") + (best.length ? best.map(ctx.oppCard).join("") : gap);
+    wireEmpty(list);
     list.querySelectorAll(".opp").forEach((c) => c.onclick = () => ctx.openDetail(c.dataset.id));
     list.querySelectorAll(".find-co").forEach((b) => b.onclick = (e) => { e.stopPropagation(); ctx.openVendors(b.dataset.id); });
 
-    const gl = (myGrants.length ? myGrants : grants).slice(0, 4);
-    $("#portal-grants").innerHTML = gl.length ? gl.map(ctx.grantCard).join("") : '<div class="empty small">No open grants match right now.</div>';
+    const grantHost = $("#portal-grants");
+    if (myGrants.length) grantHost.innerHTML = myGrants.slice(0, 4).map(ctx.grantCard).join("");
+    else {
+      grantHost.innerHTML = ctx.emptyHtml(emptyMatchAdvice({
+        subject: "grants naming your trade",
+        suggestions: [{ id: "portal-grants", label: `Grants open to ${grantAudience}`, count: grants.length, kind: "widen" }],
+      }));
+      wireEmpty(grantHost);
+    }
 
     const certs = new Set(p.certs || []);
     $("#portal-help").innerHTML = HELP.filter((h) => !h.unless || !certs.has(h.unless))
@@ -153,7 +231,16 @@ export function initPortal(ctx) {
       .map((h) => `<a class="card help-card" href="${esc(h.link)}" target="_blank" rel="noopener"><strong>${esc(h.title)}</strong><span>${esc(h.what)}</span><em>Open ↗</em></a>`).join("");
   }
   $("#portal-clear").onclick = () => { countyFilter = ""; render(); };
-  $("#portal-agent").onclick = () => { $("#agent-input").value = profileToText(profile); document.querySelector("[data-tab=agent]").click(); };
+  // Outside a Claude artifact the agent cannot run. Filling the box and opening
+  // the tab still works; the note on that tab explains where the agent runs.
+  $("#portal-agent").onclick = () => {
+    const text = profileToText(profile);
+    const box = $("#agent-input");
+    if (box && text) box.value = text;
+    document.querySelector("[data-tab=agent]")?.click();
+    const note = $("#agent-unavailable");
+    if (note && !note.hidden) note.scrollIntoView({ block: "nearest" });
+  };
 
   return {
     render,

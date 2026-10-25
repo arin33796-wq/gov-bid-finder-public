@@ -1,6 +1,6 @@
 import { floridaMap, fmt, usd } from "./charts.js?v=8";
 import { countyOf } from "./florida.js?v=1";
-import { localISODate, addDaysISO, countOpen, liveRenewals } from "./lib.js?v=4";
+import { localISODate, addDaysISO, countOpen, liveRenewals } from "./lib.js?v=5";
 
 // ---- slide navigation ----
 const slides = [...document.querySelectorAll(".slide")];
