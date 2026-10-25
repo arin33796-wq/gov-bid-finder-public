@@ -127,11 +127,12 @@ test("loadSnapshot paints from the priority file and falls back to data.json", a
   const loaded = await loadSnapshot(fetchJson);
   assert.equal(loaded.complete, false);
   assert.equal(loaded.priority.rows.length, 1);
-  assert.deepEqual(fetched.slice(0, 2).sort(), [PRIORITY_FILE, REST_FILE].sort());
+  // The rest file is not read until finish(), so its parse stays off the first paint.
+  assert.deepEqual(fetched, [PRIORITY_FILE]);
   const full = await loaded.finish();
   assert.equal(full.complete, true);
   assert.deepEqual(full.rows.map((r) => r[0]), ["a", "b"]);
-  assert.equal(fetched.includes(FULL_FILE), false);
+  assert.deepEqual(fetched, [PRIORITY_FILE, REST_FILE]);
 
   const fetched2 = [];
   const broken = await loadSnapshot(async (name) => {
@@ -158,6 +159,28 @@ test("loadSnapshot paints from the priority file and falls back to data.json", a
   assert.equal(back.complete, true);
   assert.deepEqual(back.rows.map((r) => r[0]), ["a", "b"]);
   assert.ok(fetched3.includes(FULL_FILE));
+});
+
+test("the rest file downloads during the priority fetch and is parsed only when finished", async () => {
+  const meta = { total: 2, built_at: "t", today, dicts: { sources } };
+  const a = row("a", "FL", today, 0);
+  const b = row("b", "TX", addISODays(today, 200), 0);
+  let parsed = false;
+  let opened = false;
+  const loaded = await loadSnapshot(async (name) => {
+    if (name !== PRIORITY_FILE) throw new Error(name);
+    return { meta, rows: [a] };
+  }, () => {
+    opened = true;
+    return { json: async () => { parsed = true; return { built_at: "t", rows: [b] }; } };
+  });
+  assert.equal(opened, true);
+  assert.equal(parsed, false);
+  assert.equal(loaded.complete, false);
+  const full = await loaded.finish();
+  assert.equal(parsed, true);
+  assert.equal(full.complete, true);
+  assert.deepEqual(full.rows.map((r) => r[0]), ["a", "b"]);
 });
 
 test("writeSplitFiles re-partitions a snapshot without dropping rows", () => {

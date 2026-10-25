@@ -4,7 +4,7 @@ import { initAgent } from "./agent.js?v=5";
 import { initPortal } from "./portal.js?v=6";
 import { initGrants } from "./grants.js?v=1";
 import { countyOf } from "./florida.js?v=1";
-import { FIRST_PAINT_DAYS, loadSnapshot, coveredByFirstPaint } from "./snapshot.js?v=1";
+import { FIRST_PAINT_DAYS, REST_FILE, loadSnapshot, coveredByFirstPaint } from "./snapshot.js?v=2";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -84,7 +84,8 @@ $("#pill-data").textContent = "loading…";
 // snapshot downloads with the priority file and merges after the first paint,
 // so Florida and the next 90 days are not stuck behind the whole country.
 const vendorsP = fetch("./vendors.json").then((r) => r.json()).catch(() => ({}));
-const loaded = await loadSnapshot(fetchJson);
+// Download the rest now, but leave its body unparsed until after the first paint.
+const loaded = await loadSnapshot(fetchJson, () => fetch("./" + REST_FILE).then((res) => (res.ok ? res : null), () => null));
 const vendors = await vendorsP;
 META = loaded.priority.meta;
 ROWS = loaded.priority.rows;
@@ -108,7 +109,6 @@ function showDataStatus() {
   $("#about-built").textContent = `Snapshot of ${META.total.toLocaleString()} open notices, built ${new Date(META.built_at).toLocaleString()}.`;
 }
 showDataStatus();
-const finishSnapshot = loaded.finish();
 
 const dept = (r) => D.depts[r[F.DEPT]] || "";
 const type = (r) => D.types[r[F.TYPE]] || "";
@@ -780,7 +780,8 @@ function adoptFull(full) {
     if (ROWS.some((r) => r[F.ID] === id)) openDetail(id);
   }
 }
-finishSnapshot.then((full) => {
+// Parse the rest only after the dashboard has drawn.
+loaded.finish().then((full) => {
   if (full?.complete && !dataComplete) adoptFull(full);
   else startAgent();
 });

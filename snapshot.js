@@ -79,11 +79,13 @@ export function mergeSnapshot(priority, rest) {
   return { meta: priority.meta, rows: priority.rows.concat(rest.rows), complete: true };
 }
 
-// fetchJson(name) returns the parsed file or throws. The rest file starts
-// downloading alongside the priority file. finish() resolves to the full
-// snapshot, or to data.json if the two halves do not belong together.
-export async function loadSnapshot(fetchJson) {
-  const restP = fetchJson(REST_FILE).then((v) => v, () => null);
+// fetchJson(name) returns the parsed file or throws. openRest, when passed,
+// starts the background download immediately and returns a Response whose body
+// is left unparsed. finish() parses it, so that parse does not sit in front of
+// the first paint. Without openRest, finish() fetches the rest file itself.
+// Either way finish() falls back to data.json if the halves do not match.
+export async function loadSnapshot(fetchJson, openRest) {
+  const restResponse = openRest ? Promise.resolve().then(openRest).then((r) => r, () => null) : null;
   try {
     const priority = await fetchJson(PRIORITY_FILE);
     const early = mergeSnapshot(priority, null);
@@ -93,7 +95,14 @@ export async function loadSnapshot(fetchJson) {
       complete: early.complete,
       finish: async () => {
         if (early.complete) return early;
-        const merged = mergeSnapshot(priority, await restP);
+        let rest = null;
+        try {
+          if (restResponse) {
+            const res = await restResponse;
+            rest = res ? await res.json() : null;
+          } else rest = await fetchJson(REST_FILE);
+        } catch { rest = null; }
+        const merged = mergeSnapshot(priority, rest);
         if (merged?.complete) return merged;
         try {
           const full = await fetchJson(FULL_FILE);

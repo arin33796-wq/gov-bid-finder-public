@@ -1,7 +1,7 @@
 import { floridaMap, fmt, usd } from "./charts.js?v=8";
 import { countyOf } from "./florida.js?v=1";
 import { localISODate, addDaysISO, countOpen, liveRenewals } from "./lib.js?v=3";
-import { loadSnapshot } from "./snapshot.js?v=1";
+import { REST_FILE, loadSnapshot } from "./snapshot.js?v=2";
 
 // ---- slide navigation ----
 const slides = [...document.querySelectorAll(".slide")];
@@ -49,7 +49,7 @@ const [renewals, vendors, grantsFile, snap] = await Promise.all([
   fetch("./renewals.json").then((r) => r.json()).catch(() => []),
   fetch("./vendors.json").then((r) => r.json()).catch(() => ({})),
   fetch("./grants.json").then((r) => r.json()).catch(() => ({ grants: [] })),
-  loadSnapshot(fetchJson),
+  loadSnapshot(fetchJson, () => fetch("./" + REST_FILE).then((res) => (res.ok ? res : null), () => null)),
 ]);
 
 // R.END = 1, R.AMT = 2, R.STATE = 5 in renewals.json (see R in app.js).
