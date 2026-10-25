@@ -2,6 +2,7 @@ import { floridaMap, fmt, usd } from "./charts.js?v=10";
 import { countyOf } from "./florida.js?v=1";
 import { localISODate, addDaysISO, countOpen, liveRenewals, filterGrants } from "./lib.js?v=6";
 import { pitchMiamiBlurb } from "./pitch-lib.js?v=1";
+import { loadSnapshot } from "./snapshot.js?v=3";
 
 // ---- slide navigation ----
 const slides = [...document.querySelectorAll(".slide")];
@@ -42,21 +43,17 @@ function drawMap() {
 }
 
 const today = localISODate();
-const [data, renewals, vendors, grantsFile] = await Promise.all([
-  fetch("./data.json").then((r) => r.json()),
+const fetchJson = async (file) => {
+  const res = await fetch("./" + file);
+  if (!res.ok) throw new Error(file);
+  return res.json();
+};
+const [renewals, vendors, grantsFile, snap] = await Promise.all([
   fetch("./renewals.json").then((r) => r.json()).catch(() => []),
   fetch("./vendors.json").then((r) => r.json()).catch(() => ({})),
   fetch("./grants.json").then((r) => r.json()).catch(() => ({ grants: [] })),
+  loadSnapshot(fetchJson).catch(() => null),
 ]);
-const SRC = data.meta.dicts.sources, CITY = 8;
-const open = data.rows.filter((r) => r[DUE] >= today);
-setStat("open", countOpen(data.rows, DUE, today).toLocaleString());
-// VALUE is the typical historical award for that notice's industry code, across
-// every open notice that has one. It is not the price of the notice, and it is
-// not limited to the trades named in the paragraph under the number.
-const values = open.map((r) => r[VALUE]).filter(Boolean).sort((a, b) => a - b);
-setStat("median", values.length ? usd(values[Math.floor(values.length / 2)]) : "n/a");
-setStat("fl", open.filter((r) => r[STATE] === "FL").length.toLocaleString());
 
 // R.END = 1, R.AMT = 2, R.STATE = 5 in renewals.json (see R in app.js).
 const yearOut = addDaysISO(365);
@@ -67,18 +64,6 @@ setStat("flRenewCount", flRenew.length.toLocaleString());
 const companies = new Set();
 for (const list of Object.values(vendors)) for (const v of list) companies.add(v[0]);
 setStat("companies", fmt(companies.size));
-setStat("awards", fmt(data.meta.awards_by_month.reduce((a, m) => a + m.value, 0)));
-
-byCounty = {};
-for (const r of open) if (r[STATE] === "FL") { const c = countyOf(r[CITY], SRC[r[10]]); if (c) byCounty[c] = (byCounty[c] || 0) + 1; }
-setStat("miami", (byCounty["Miami-Dade"] || 0).toLocaleString());
-const mdc = open.filter((r) => SRC[r[10]] === "miami-dade");
-setStat("mdcBids", mdc.length.toLocaleString());
-const types = data.meta.dicts.types;
-// WHY namedBuyer: the sentence is only true when a future solicitation in this
-// file names a person. Future rows are how the county lists work it plans to buy.
-const namedBuyer = mdc.some((r) => types[r[TYPE]] === "Future Solicitation" && String(r[CNAME] || "").trim());
-document.getElementById("miami-lead").textContent = pitchMiamiBlurb(mdc.map((r) => r[TITLE]), { namedBuyer });
 // WHY hideResearch: the Grants tab's "Hide research grants" box starts checked.
 // WHY the union: the number is grants a small business or a nonprofit may apply
 // for. Unrestricted (Grants.gov 99) counts for both. Others (code 25) does not,
@@ -88,4 +73,40 @@ for (const who of ["small_business", "nonprofit"]) {
   for (const g of filterGrants(grantsFile.grants || [], { who, hideResearch: true, today })) grantIds.add(g.id);
 }
 setStat("grants", grantIds.size.toLocaleString());
-if (slides[at].querySelector("#deck-map")) drawMap();
+if (snap) setStat("awards", fmt(snap.priority.meta.awards_by_month.reduce((a, m) => a + m.value, 0)));
+
+const CITY = 8;
+// Florida figures are complete in the priority file. The nationwide open count
+// and the median award wait, so a short number is never shown as the total.
+function paintContracts(data, totals) {
+  const SRC = data.meta.dicts.sources;
+  const open = data.rows.filter((r) => r[DUE] >= today);
+  const flOpen = open.filter((r) => r[STATE] === "FL");
+  setStat("fl", flOpen.length.toLocaleString());
+  byCounty = {};
+  for (const r of flOpen) { const c = countyOf(r[CITY], SRC[r[10]]); if (c) byCounty[c] = (byCounty[c] || 0) + 1; }
+  setStat("miami", (byCounty["Miami-Dade"] || 0).toLocaleString());
+  const mdc = open.filter((r) => SRC[r[10]] === "miami-dade");
+  setStat("mdcBids", mdc.length.toLocaleString());
+  const types = data.meta.dicts.types;
+  // WHY namedBuyer: the sentence is only true when a future solicitation in this
+  // file names a person. Future rows are how the county lists work it plans to buy.
+  const namedBuyer = mdc.some((r) => types[r[TYPE]] === "Future Solicitation" && String(r[CNAME] || "").trim());
+  document.getElementById("miami-lead").textContent = pitchMiamiBlurb(mdc.map((r) => r[TITLE]), { namedBuyer });
+  if (totals) {
+    setStat("open", countOpen(data.rows, DUE, today).toLocaleString());
+    // VALUE is the typical historical award for that notice's industry code, across
+    // every open notice that has one. It is not the price of the notice, and it is
+    // not limited to the trades named in the paragraph under the number.
+    const values = open.map((r) => r[VALUE]).filter(Boolean).sort((a, b) => a - b);
+    setStat("median", values.length ? usd(values[Math.floor(values.length / 2)]) : "n/a");
+  }
+  if (slides[at].querySelector("#deck-map")) drawMap();
+}
+if (snap) {
+  paintContracts(snap.priority, snap.complete);
+  if (!snap.complete) {
+    const full = await snap.finish();
+    if (full.complete) paintContracts(full, true);
+  }
+}

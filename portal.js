@@ -190,12 +190,20 @@ export function initPortal(ctx) {
     const inHome = home ? pool.filter((r) => countyOf(r[F.CITY], ctx.source(r)) === home).length : 0;
     $("#portal-who").innerHTML = `${pool.length.toLocaleString()} open contracts in Florida for <span class="accent">${esc(tradeName.toLowerCase())}</span>`;
     $("#portal-lede").textContent = `${home ? `${inHome.toLocaleString()} are in ${home} County. ` : ""}Your profile: ${p.kind === "nonprofit" ? "a nonprofit" : "a business"}${tradeLabel(p) ? `, ${tradeLabel(p)}` : ""}. Filter the map by job type or county, then see what fits and who can help for free.`;
+    // County and Florida counts only read Florida rows, which are in the first
+    // file. The nationwide total waits, so a short number is never shown as the total.
+    const nationwideReady = ctx.complete ? ctx.complete() : true;
+    const soonReady = ctx.covered ? ctx.covered({ state: "", source: "", days: 7 }) : nationwideReady;
+    const nationwideSub = nationwideReady
+      ? `${soon} closing this week`
+      : (soonReady ? `${soon} closing this week · full count still loading` : "full count still loading");
+    const outside = !home;
     $("#portal-tiles").innerHTML = [
-      [home ? `In ${home}` : "Nationwide", home ? inCounty.length : all.length, "open in your trade"],
+      [outside ? "Nationwide" : `In ${home}`, outside ? (nationwideReady ? all.length : "…") : inCounty.length, "open in your trade"],
       ["In Florida", fl.length, "open in your trade"],
-      ["Nationwide", all.length, `${soon} closing this week`],
+      ["Nationwide", nationwideReady ? all.length : "…", nationwideSub],
       ["Grants for you", myGrants.length, myGrants.length ? "match your trade" : grants.length ? `none name your trade · ${grants.length.toLocaleString("en-US")} open to ${grantAudience}` : "none open right now"],
-    ].map(([l, v, s]) => `<div class="card tile"><div class="label">${esc(l)}</div><div class="value">${Number(v).toLocaleString()}</div><div class="sub">${esc(s)}</div></div>`).join("");
+    ].map(([l, v, s]) => `<div class="card tile"><div class="label">${esc(l)}</div><div class="value">${v === "…" ? "…" : Number(v).toLocaleString()}</div><div class="sub">${esc(s)}</div></div>`).join("");
 
     // Every open Florida contract is the light layer. The chosen job type is darker.
     // "All jobs" is one layer, because there is no separate trade to shade.
@@ -217,7 +225,7 @@ export function initPortal(ctx) {
         subject: `${tradeName.toLowerCase()} contracts`,
         place: "Florida",
         suggestions: [
-          trade !== "mine" ? { id: "portal-nationwide", label: "Your trades, nationwide", count: all.length, kind: "widen" } : null,
+          trade !== "mine" && nationwideReady ? { id: "portal-nationwide", label: "Your trades, nationwide", count: all.length, kind: "widen" } : null,
           ...tradeSuggestions("FL"),
         ].filter(Boolean),
       }));
@@ -248,7 +256,7 @@ export function initPortal(ctx) {
       place: county ? `${county} County` : homeGap ? `${home} County` : (!fl.length && home ? "Florida" : ""),
       suggestions: [
         county ? { id: "portal-florida", label: "All of Florida", count: pool.length, kind: "widen" } : null,
-        trade !== "mine" ? { id: "portal-nationwide", label: "Your trades, nationwide", count: all.length, kind: "widen" } : null,
+        trade !== "mine" && nationwideReady ? { id: "portal-nationwide", label: "Your trades, nationwide", count: all.length, kind: "widen" } : null,
         trade !== "all" ? { id: "portal-all-jobs", label: "All jobs in Florida", count: floridaPool("all", p).length, kind: "widen" } : null,
         ...(!best.length ? tradeSuggestions(county ? "FL" : "") : []),
       ].filter(Boolean),

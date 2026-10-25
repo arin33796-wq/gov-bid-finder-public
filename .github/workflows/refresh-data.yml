@@ -48,23 +48,51 @@ jobs:
         # Keeps the previous grants.json if Grants.gov is down.
         run: node scripts/build-grants.js --out grants.json
 
+      - name: Split the first-paint snapshot
+        # build-sam and build-miami-dade also split. This run is the one that
+        # publishes, so the committed halves always match data.json, including
+        # when the county feed is down and that script leaves the file alone.
+        run: node scripts/split-data.js --data data.json
+
       - name: Sanity-check the result
         # WHY 2000: a normal day has 10,000+ open federal notices. Far fewer means a
         # truncated or changed extract; keep yesterday's data rather than publish it.
         run: |
           node --input-type=module -e '
-            import { readFileSync } from "node:fs";
+            import { readFileSync, statSync } from "node:fs";
+            import { splitRows, mergeSnapshot, mapPreset, PRIORITY_MAX_BYTES } from "./snapshot.js";
             const d = JSON.parse(readFileSync("data.json", "utf8"));
+            const pri = JSON.parse(readFileSync("data-priority.json", "utf8"));
+            const rest = JSON.parse(readFileSync("data-rest.json", "utf8"));
             const fed = d.meta.by_source.find((s) => s.label === "sam.gov")?.value ?? 0;
             console.log("federal rows:", fed);
             if (fed < 2000) { console.error("Too few federal notices; refusing to publish."); process.exit(1); }
+            const expect = splitRows(d.rows, d.meta.dicts);
+            if (pri.rows.length !== expect.first.length || rest.rows.length !== expect.rest.length || pri.rows.length + rest.rows.length !== d.rows.length) {
+              console.error("Split files do not match data.json."); process.exit(1);
+            }
+            if (JSON.stringify(pri.meta) !== JSON.stringify(d.meta) || rest.built_at !== d.meta.built_at) {
+              console.error("Priority meta or rest snapshot day does not match data.json."); process.exit(1);
+            }
+            if (JSON.stringify(pri.map) !== JSON.stringify(mapPreset(d.rows, d.meta.today))) {
+              console.error("National map preset does not match data.json."); process.exit(1);
+            }
+            const priBytes = statSync("data-priority.json").size;
+            if (priBytes > PRIORITY_MAX_BYTES) {
+              console.error("Priority file is " + priBytes + " bytes; refusing to publish."); process.exit(1);
+            }
+            const merged = mergeSnapshot(pri, rest);
+            if (!merged?.complete || merged.rows.length !== d.rows.length) {
+              console.error("Split halves do not merge back to the full snapshot."); process.exit(1);
+            }
+            console.log("split ok:", pri.rows.length, "first,", rest.rows.length, "rest,", priBytes, "priority bytes");
           '
 
       - name: Commit if changed
         run: |
-          if git diff --quiet -- data.json grants.json; then echo "No change."; exit 0; fi
+          git add -- data.json data-priority.json data-rest.json grants.json
+          if git diff --cached --quiet; then echo "No change."; exit 0; fi
           git config user.name "govbid-refresh"
           git config user.email "actions@users.noreply.github.com"
-          git add data.json grants.json
           git commit -m "chore(data): Daily SAM.gov, Miami-Dade and Grants.gov refresh"
           git push
