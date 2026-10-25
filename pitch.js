@@ -1,6 +1,6 @@
 import { floridaMap, fmt, usd } from "./charts.js?v=9";
 import { countyOf } from "./florida.js?v=1";
-import { localISODate, addDaysISO, countOpen, liveRenewals } from "./lib.js?v=5";
+import { localISODate, addDaysISO, countOpen, liveRenewals, filterGrants } from "./lib.js?v=6";
 
 // ---- slide navigation ----
 const slides = [...document.querySelectorAll(".slide")];
@@ -69,5 +69,12 @@ byCounty = {};
 for (const r of open) if (r[STATE] === "FL") { const c = countyOf(r[CITY], SRC[r[10]]); if (c) byCounty[c] = (byCounty[c] || 0) + 1; }
 setStat("miami", (byCounty["Miami-Dade"] || 0).toLocaleString());
 setStat("mdcBids", open.filter((r) => SRC[r[10]] === "miami-dade").length.toLocaleString());
-setStat("grants", grantsFile.grants.filter((g) => !g.closes || g.closes >= today).length.toLocaleString());
+// WHY: the slide says these are open to small businesses and nonprofits.
+// filterGrants includes Unrestricted for both (any applicant may apply) and
+// leaves out Others, whose eligibility is only in the listing text.
+const grantIds = new Set();
+for (const who of ["small_business", "nonprofit"]) {
+  for (const g of filterGrants(grantsFile.grants, { who, hideResearch: false, today })) grantIds.add(g.id);
+}
+setStat("grants", grantIds.size.toLocaleString());
 if (slides[at].querySelector("#deck-map")) drawMap();

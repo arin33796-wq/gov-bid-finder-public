@@ -2,7 +2,7 @@
 // profile in this browser, and everything on the portal is filtered by it: the
 // Florida county heatmap, best-matching contracts, grants, expiring work and the
 // free local help that fits.
-import { TRADES, CERTS, profileStems, setAsideAllowed, profileToText, filterGrants, noticeMatchesTrade, grantMatchesTrade, emptyMatchAdvice } from "./lib.js?v=5";
+import { TRADES, CERTS, profileStems, setAsideAllowed, profileToText, filterGrants, noticeMatchesTrade, grantMatchesTrade, emptyMatchAdvice } from "./lib.js?v=6";
 import { FL_COUNTIES, countyOf, SOUTH_FLORIDA } from "./florida.js?v=1";
 import { floridaMap } from "./charts.js?v=9";
 

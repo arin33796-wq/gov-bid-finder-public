@@ -1,8 +1,8 @@
 import { hbar, vbar, line, card, fmt, usd, stateMap, floridaMap, calendarHeat } from "./charts.js?v=9";
-import { localISODate, addDaysISO, daysBetween, isSetAside, countOpen, liveRenewals, recentMonths, coverageSkewed, emailText, naicsSupportsTrade, emptyMatchAdvice, TRADES } from "./lib.js?v=5";
-import { initAgent } from "./agent.js?v=8";
-import { initPortal } from "./portal.js?v=9";
-import { initGrants } from "./grants.js?v=3";
+import { localISODate, addDaysISO, daysBetween, isSetAside, countOpen, liveRenewals, recentMonths, coverageSkewed, emailText, naicsSupportsTrade, emptyMatchAdvice, TRADES } from "./lib.js?v=6";
+import { initAgent } from "./agent.js?v=9";
+import { initPortal } from "./portal.js?v=10";
+import { initGrants } from "./grants.js?v=4";
 import { countyOf } from "./florida.js?v=1";
 
 const $ = (s) => document.querySelector(s);
