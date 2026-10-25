@@ -32,8 +32,15 @@ function hookTip(node, title, lines) {
 export function hbar(host, data, { valueLabel = "notices", max = null, onClick = null } = {}) {
   host.innerHTML = "";
   if (!data.length) { host.innerHTML = '<div class="empty small">No data for these filters.</div>'; return; }
-  const rowH = 27, gap = 2, labelW = 168, valueW = 46, w = host.clientWidth || 420;
-  const plotW = Math.max(60, w - labelW - valueW);
+  const w = host.clientWidth || 420;
+  // WHY 420: below that, a 168px label column plus the value leaves almost no bar,
+  // and the value text draws past the viewBox. That spilled the page at phone width.
+  // WHY 108 / 36: the desktop columns are 168 and 46, which do not fit a phone row.
+  const narrow = w < 420;
+  const labelW = narrow ? 108 : 168, valueW = narrow ? 36 : 46;
+  const labelMax = narrow ? 16 : 26;
+  const rowH = 27, gap = 2;
+  const plotW = Math.max(40, w - labelW - valueW);
   const h = data.length * rowH;
   const top = max ?? (Math.max(...data.map((d) => d.value)) || 1);
   const svg = el("svg", { viewBox: `0 0 ${w} ${h}`, height: h, role: "img" }, host);
@@ -41,7 +48,7 @@ export function hbar(host, data, { valueLabel = "notices", max = null, onClick =
     const y = i * rowH;
     const g = el("g", { class: "bar-row", style: onClick ? "cursor:pointer" : "" }, svg);
     el("text", { x: labelW - 10, y: y + rowH / 2 + 4, "text-anchor": "end", class: "blabel" }, g).textContent =
-      d.label.length > 26 ? d.label.slice(0, 25) + "…" : d.label;
+      d.label.length > labelMax ? d.label.slice(0, labelMax - 1) + "…" : d.label;
     el("rect", { x: labelW, y: y + gap, width: plotW, height: rowH - gap * 2, rx: 4, class: "bar-track" }, g);
     const bw = Math.max(2, (d.value / top) * plotW);
     el("rect", { x: labelW, y: y + gap, width: bw, height: rowH - gap * 2, rx: 4, fill: "var(--series-1)", class: "bar" }, g);

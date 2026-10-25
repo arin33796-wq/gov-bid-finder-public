@@ -33,13 +33,36 @@ kbd{border:1px solid var(--border);border-bottom-width:2px;border-radius:5px;pad
 .badge{font-family:var(--font-mono);font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--series-1)}
 .badge.free{color:var(--good)}
 .map-card{padding:22px;max-width:760px}
-/* WHY: the map is taller than wide, so on a laptop it ran past the fold and cut off the Keys. */
-.map-card .shape-map{max-height:62vh}
+/* WHY 600/560: Florida is drawn in FL_VIEW, which is 600 by 560. The Keys sit on the last row.
+   WHY 220px: title, slide padding and the fixed nav. 62vh alone cropped that last row on a 720p frame. */
+.map-card .shape-map{width:100%;height:auto;aspect-ratio:600 / 560;max-height:min(62vh,calc(100dvh - 220px))}
 .deck-nav{position:fixed;bottom:calc(18px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);display:flex;gap:10px;align-items:center;background:color-mix(in srgb,var(--surface-1) 85%,transparent);backdrop-filter:blur(12px);border:1px solid var(--border);border-radius:999px;padding:6px 12px;z-index:30}
 .deck-nav a{text-decoration:none;font-size:13px}
+/* WHY 780: a 1280×720 projector is 720px tall, under this line. */
+@media (max-height: 780px){
+  .slide{padding:28px clamp(20px,5vw,72px) 76px}
+  .kicker{margin-bottom:10px}
+  .huge{font-size:clamp(52px,9vw,108px);margin-bottom:14px}
+  .slide h2{font-size:clamp(28px,4vw,46px);margin-bottom:16px}
+  .big{font-size:clamp(16px,1.7vw,20px);margin-bottom:10px}
+  .stats{gap:10px;margin-bottom:14px}
+  .stats b{font-size:clamp(28px,3.6vw,44px)}
+  .stats div{padding-top:10px}
+  .flow{gap:10px;margin-bottom:14px}
+  .flow b{font-size:22px}
+  /* WHY 240px: shorter type still needs the title and the nav kept off the Keys. */
+  .map-card .shape-map{max-height:min(46vh,calc(100dvh - 240px))}
+}
+/* WHY 760: same phone width as the app. WHY 108px: the fixed nav is ~52px tall and 18px off the bottom. */
 @media (max-width:760px){
-  .slide{padding:40px 18px 100px}
-  .foot{bottom:84px}
+  .slide{padding:28px 16px 108px;justify-content:flex-start}
+  .huge{font-size:clamp(44px,16vw,72px)}
+  .slide h2{font-size:clamp(26px,7.5vw,40px);margin-bottom:18px}
+  .kicker{letter-spacing:.08em}
+  .stats{grid-template-columns:1fr 1fr}
+  .flow,.tiers{grid-template-columns:1fr}
+  .foot{position:static;margin-top:16px}
+  .deck-nav{max-width:calc(100vw - 16px)}
 }
 @media print{
   .deck-nav,.progress{display:none}
