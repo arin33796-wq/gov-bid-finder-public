@@ -59,26 +59,33 @@ jobs:
         # truncated or changed extract; keep yesterday's data rather than publish it.
         run: |
           node --input-type=module -e '
-            import { readFileSync } from "node:fs";
-            import { splitRows, mergeSnapshot } from "./snapshot.js";
+            import { readFileSync, statSync } from "node:fs";
+            import { splitRows, mergeSnapshot, mapPreset, PRIORITY_MAX_BYTES } from "./snapshot.js";
             const d = JSON.parse(readFileSync("data.json", "utf8"));
             const pri = JSON.parse(readFileSync("data-priority.json", "utf8"));
             const rest = JSON.parse(readFileSync("data-rest.json", "utf8"));
             const fed = d.meta.by_source.find((s) => s.label === "sam.gov")?.value ?? 0;
             console.log("federal rows:", fed);
             if (fed < 2000) { console.error("Too few federal notices; refusing to publish."); process.exit(1); }
-            const expect = splitRows(d.rows, d.meta.dicts, d.meta.today);
+            const expect = splitRows(d.rows, d.meta.dicts);
             if (pri.rows.length !== expect.first.length || rest.rows.length !== expect.rest.length || pri.rows.length + rest.rows.length !== d.rows.length) {
               console.error("Split files do not match data.json."); process.exit(1);
             }
             if (JSON.stringify(pri.meta) !== JSON.stringify(d.meta) || rest.built_at !== d.meta.built_at) {
               console.error("Priority meta or rest snapshot day does not match data.json."); process.exit(1);
             }
+            if (JSON.stringify(pri.map) !== JSON.stringify(mapPreset(d.rows, d.meta.today))) {
+              console.error("National map preset does not match data.json."); process.exit(1);
+            }
+            const priBytes = statSync("data-priority.json").size;
+            if (priBytes > PRIORITY_MAX_BYTES) {
+              console.error("Priority file is " + priBytes + " bytes; refusing to publish."); process.exit(1);
+            }
             const merged = mergeSnapshot(pri, rest);
             if (!merged?.complete || merged.rows.length !== d.rows.length) {
               console.error("Split halves do not merge back to the full snapshot."); process.exit(1);
             }
-            console.log("split ok:", pri.rows.length, "first,", rest.rows.length, "rest");
+            console.log("split ok:", pri.rows.length, "first,", rest.rows.length, "rest,", priBytes, "priority bytes");
           '
 
       - name: Commit if changed

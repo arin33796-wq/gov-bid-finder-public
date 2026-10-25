@@ -6,8 +6,10 @@ import { join } from "node:path";
 import { F } from "../scripts/sam-lib.js";
 import { writeSplitFiles } from "../scripts/split-data.js";
 import {
-  FIRST_PAINT_DAYS, FLORIDA_SOURCES, PRIORITY_FILE, REST_FILE, FULL_FILE, ROW,
-  addISODays, isPriorityRow, splitRows, coveredByFirstPaint, mergeSnapshot, loadSnapshot,
+  MAP_PRESET_DAYS, MAP_SOON_DAYS, PRIORITY_MAX_BYTES, FLORIDA_SOURCES,
+  PRIORITY_FILE, REST_FILE, FULL_FILE, ROW,
+  addISODays, isPriorityRow, splitRows, mapPreset, mapPresetApplies,
+  coveredByFirstPaint, mergeSnapshot, loadSnapshot,
 } from "../snapshot.js";
 
 const sources = ["sam.gov", "myfloridamarketplace", "miami-dade"];
@@ -35,60 +37,87 @@ test("file names are plain relative names", () => {
   }
 });
 
-test("the 90-day cutoff is the snapshot day plus 90 calendar days", () => {
-  assert.equal(FIRST_PAINT_DAYS, 90);
-  assert.equal(addISODays("2026-10-25", 90), "2027-01-23");
+test("the map preset window is the snapshot day plus 30 calendar days", () => {
+  assert.equal(MAP_PRESET_DAYS, 30);
+  assert.equal(MAP_SOON_DAYS, 7);
+  assert.equal(addISODays("2026-10-25", 30), "2026-11-24");
+  assert.equal(addISODays("2026-10-25", 7), "2026-11-01");
   assert.equal(addISODays("2026-12-31", 1), "2027-01-01");
 });
 
-test("priority is Florida, the two local sources, and deadlines inside 90 days", () => {
-  const far = addISODays(today, 91);
-  const edge = addISODays(today, 90);
+test("priority is Florida and the two local sources, and nothing else", () => {
+  const far = addISODays(today, 120);
   const dicts = { sources };
   const rows = [
     row("fl-far", "FL", far, 0),
     row("mdc-blank", "", far, 2),
     row("mfmp-ga", "GA", far, 1),
-    row("soon", "TX", edge, 0),
-    row("today", "CA", today, 0),
-    row("blank-soon", "", addISODays(today, 10), 0),
+    row("soon-tx", "TX", today, 0),
+    row("soon-blank", "", addISODays(today, 10), 0),
     row("late", "TX", far, 0),
     row("past", "GA", "2026-10-24", 0),
     row("nodue", "GA", "", 0),
   ];
-  const { first, rest } = splitRows(rows, dicts, today);
-  assert.deepEqual(first.map((r) => r[0]), ["fl-far", "mdc-blank", "mfmp-ga", "soon", "today", "blank-soon"]);
-  assert.deepEqual(rest.map((r) => r[0]), ["late", "past", "nodue"]);
-  // Each input row is in exactly one side, still the same array.
+  const { first, rest } = splitRows(rows, dicts);
+  assert.deepEqual(first.map((r) => r[0]), ["fl-far", "mdc-blank", "mfmp-ga"]);
+  assert.deepEqual(rest.map((r) => r[0]), ["soon-tx", "soon-blank", "late", "past", "nodue"]);
   const seen = new Map();
   for (const r of first.concat(rest)) seen.set(r, (seen.get(r) || 0) + 1);
   for (const r of rows) assert.equal(seen.get(r), 1);
   assert.equal(first.length + rest.length, rows.length);
-  for (const r of first) assert.equal(isPriorityRow(r, sources, today), true);
-  for (const r of rest) assert.equal(isPriorityRow(r, sources, today), false);
-  // A row that is both Florida and due soon is not duplicated.
-  const both = [row("both", "FL", today, 0)];
-  const once = splitRows(both, dicts, today);
+  for (const r of first) assert.equal(isPriorityRow(r, sources), true);
+  for (const r of rest) assert.equal(isPriorityRow(r, sources), false);
+  const both = [row("both", "FL", today, 2)];
+  const once = splitRows(both, dicts);
   assert.equal(once.first.length, 1);
   assert.equal(once.rest.length, 0);
 });
 
+test("the map preset counts the default national window from every row", () => {
+  const rows = [
+    row("fl-soon", "FL", today, 0),
+    row("fl-month", "FL", addISODays(today, 30), 0),
+    row("fl-far", "FL", addISODays(today, 31), 0),
+    row("tx-week", "TX", addISODays(today, 7), 0),
+    row("tx-late", "TX", addISODays(today, 40), 0),
+    row("past", "CA", "2026-10-24", 0),
+    row("blank", "", today, 0),
+  ];
+  const map = mapPreset(rows, today);
+  assert.equal(map.days, 30);
+  assert.equal(map.today, today);
+  assert.equal(map.byState.FL, 2);
+  assert.equal(map.byState.TX, 1);
+  assert.equal(map.byState.CA, undefined);
+  assert.equal(map.soonByState.FL, 1);
+  assert.equal(map.soonByState.TX, 1);
+  assert.ok(Object.keys(map.byState).length > 1);
+});
+
 test("a filtered view is complete only when the priority file holds every row it can show", () => {
   const fresh = { complete: false, snapshotToday: today, userToday: today };
-  assert.equal(coveredByFirstPaint({ ...fresh, state: "FL", days: 0 }), true);
-  assert.equal(coveredByFirstPaint({ ...fresh, state: "TX", days: 90 }), true);
-  assert.equal(coveredByFirstPaint({ ...fresh, state: "TX", days: 30 }), true);
-  assert.equal(coveredByFirstPaint({ ...fresh, state: "", days: 7 }), true);
-  assert.equal(coveredByFirstPaint({ ...fresh, state: "TX", days: 91 }), false);
-  assert.equal(coveredByFirstPaint({ ...fresh, state: "", days: 0 }), false);
-  assert.equal(coveredByFirstPaint({ ...fresh, source: "miami-dade", days: 0 }), true);
-  assert.equal(coveredByFirstPaint({ ...fresh, source: "myfloridamarketplace", days: 0 }), true);
-  assert.equal(coveredByFirstPaint({ ...fresh, source: "sam.gov", days: 0 }), false);
-  assert.equal(coveredByFirstPaint({ complete: true, state: "", days: 0 }), true);
-  // Five days after the snapshot, a 90-day window reaches past the first file.
-  assert.equal(coveredByFirstPaint({ ...fresh, userToday: "2026-10-30", state: "TX", days: 90 }), false);
-  assert.equal(coveredByFirstPaint({ ...fresh, userToday: "2026-10-30", state: "TX", days: 85 }), true);
+  assert.equal(coveredByFirstPaint({ ...fresh, state: "FL" }), true);
+  assert.equal(coveredByFirstPaint({ ...fresh, state: "TX", days: 30 }), false);
+  assert.equal(coveredByFirstPaint({ ...fresh, state: "TX", days: 7 }), false);
+  assert.equal(coveredByFirstPaint({ ...fresh, state: "", days: 30 }), false);
+  assert.equal(coveredByFirstPaint({ ...fresh, source: "miami-dade" }), true);
+  assert.equal(coveredByFirstPaint({ ...fresh, source: "myfloridamarketplace" }), true);
+  assert.equal(coveredByFirstPaint({ ...fresh, source: "sam.gov" }), false);
+  assert.equal(coveredByFirstPaint({ complete: true, state: "" }), true);
   assert.ok(FLORIDA_SOURCES.includes("miami-dade"));
+});
+
+test("the national map preset applies only to the default window on the snapshot day", () => {
+  const preset = { days: 30, soonDays: 7, today, byState: { FL: 1 }, soonByState: {} };
+  const base = { complete: false, snapshotToday: today, userToday: today, preset };
+  assert.equal(mapPresetApplies({ ...base, days: 30 }), true);
+  assert.equal(mapPresetApplies({ ...base, days: 7 }), false);
+  assert.equal(mapPresetApplies({ ...base, days: 90 }), false);
+  assert.equal(mapPresetApplies({ ...base, days: 30, source: "sam.gov" }), false);
+  assert.equal(mapPresetApplies({ ...base, days: 30, setaside: "small" }), false);
+  assert.equal(mapPresetApplies({ ...base, days: 30, userToday: "2026-10-26" }), false);
+  assert.equal(mapPresetApplies({ ...base, days: 30, complete: true }), false);
+  assert.equal(mapPresetApplies({ ...base, days: 30, preset: null }), false);
 });
 
 test("merge accepts the matching half and refuses a stale or overlapping one", () => {
@@ -109,12 +138,13 @@ test("merge accepts the matching half and refuses a stale or overlapping one", (
   assert.equal(mergeSnapshot(null, null), null);
 });
 
-test("loadSnapshot paints from the priority file and falls back to data.json", async () => {
+test("loadSnapshot paints from the priority file and does not fetch data.json", async () => {
   const meta = { total: 2, built_at: "t", today, dicts: { sources }, awards_by_month: [] };
   const a = row("a", "FL", today, 0);
   const b = row("b", "TX", addISODays(today, 200), 0);
+  const map = mapPreset([a, b], today);
   const files = {
-    [PRIORITY_FILE]: { meta, rows: [a] },
+    [PRIORITY_FILE]: { meta, map, rows: [a] },
     [REST_FILE]: { built_at: "t", rows: [b] },
     [FULL_FILE]: { meta, rows: [a, b] },
   };
@@ -127,22 +157,14 @@ test("loadSnapshot paints from the priority file and falls back to data.json", a
   const loaded = await loadSnapshot(fetchJson);
   assert.equal(loaded.complete, false);
   assert.equal(loaded.priority.rows.length, 1);
-  // The rest file is not read until finish(), so its parse stays off the first paint.
+  assert.deepEqual(loaded.priority.map, map);
   assert.deepEqual(fetched, [PRIORITY_FILE]);
   const full = await loaded.finish();
   assert.equal(full.complete, true);
   assert.deepEqual(full.rows.map((r) => r[0]), ["a", "b"]);
   assert.deepEqual(fetched, [PRIORITY_FILE, REST_FILE]);
 
-  const fetched2 = [];
-  const broken = await loadSnapshot(async (name) => {
-    fetched2.push(name);
-    if (name === FULL_FILE) return files[FULL_FILE];
-    throw new Error("nope");
-  });
-  assert.equal(broken.complete, true);
-  assert.deepEqual((await broken.finish()).rows.map((r) => r[0]), ["a", "b"]);
-  assert.ok(fetched2.includes(FULL_FILE));
+  await assert.rejects(() => loadSnapshot(async () => { throw new Error("nope"); }));
 
   const fetched3 = [];
   const stale = {
@@ -156,9 +178,9 @@ test("loadSnapshot paints from the priority file and falls back to data.json", a
     return stale[name];
   });
   const back = await recovered.finish();
-  assert.equal(back.complete, true);
-  assert.deepEqual(back.rows.map((r) => r[0]), ["a", "b"]);
-  assert.ok(fetched3.includes(FULL_FILE));
+  assert.equal(back.complete, false);
+  assert.deepEqual(back.rows.map((r) => r[0]), ["a"]);
+  assert.deepEqual(fetched3, [PRIORITY_FILE, REST_FILE]);
 });
 
 test("the rest file downloads during the priority fetch and is parsed only when finished", async () => {
@@ -183,7 +205,7 @@ test("the rest file downloads during the priority fetch and is parsed only when 
   assert.deepEqual(full.rows.map((r) => r[0]), ["a", "b"]);
 });
 
-test("writeSplitFiles re-partitions a snapshot without dropping rows", () => {
+test("writeSplitFiles re-partitions a snapshot and stores the map preset", () => {
   const dir = mkdtempSync(join(tmpdir(), "govbid-split-"));
   try {
     const far = addISODays(today, 120);
@@ -192,10 +214,13 @@ test("writeSplitFiles re-partitions a snapshot without dropping rows", () => {
       rows: [row("a", "FL", far, 0), row("b", "TX", today, 0), row("c", "TX", far, 0)],
     };
     const n = writeSplitFiles(data, dir);
-    assert.deepEqual(n, { first: 2, rest: 1, total: 3 });
+    assert.deepEqual(n, { first: 1, rest: 2, total: 3 });
     const pri = JSON.parse(readFileSync(join(dir, PRIORITY_FILE), "utf8"));
     const rest = JSON.parse(readFileSync(join(dir, REST_FILE), "utf8"));
     assert.deepEqual(pri.meta, data.meta);
+    assert.deepEqual(pri.map, mapPreset(data.rows, today));
+    assert.equal(pri.map.byState.TX, 1);
+    assert.equal(pri.map.byState.FL, undefined);
     assert.equal(rest.built_at, "t");
     assert.deepEqual(pri.rows.map((r) => r[0]).concat(rest.rows.map((r) => r[0])), ["a", "b", "c"]);
     const merged = mergeSnapshot(pri, rest);
@@ -212,10 +237,18 @@ test("the committed split is a pure re-partition of data.json", () => {
   const rest = JSON.parse(readFileSync(REST_FILE, "utf8"));
   assert.deepEqual(pri.meta, data.meta);
   assert.equal(rest.built_at, data.meta.built_at);
-  const expect = splitRows(data.rows, data.meta.dicts, data.meta.today);
+  const expect = splitRows(data.rows, data.meta.dicts);
   assert.equal(pri.rows.length + rest.rows.length, data.rows.length);
   assert.deepEqual(pri.rows, expect.first);
   assert.deepEqual(rest.rows, expect.rest);
+  assert.deepEqual(pri.map, mapPreset(data.rows, data.meta.today));
+  const end = addISODays(data.meta.today, MAP_PRESET_DAYS);
+  let fl30 = 0;
+  for (const r of data.rows) {
+    if (r[ROW.STATE] === "FL" && r[ROW.DUE] >= data.meta.today && r[ROW.DUE] <= end) fl30++;
+  }
+  assert.equal(pri.map.byState.FL, fl30);
+  assert.ok(Object.keys(pri.map.byState).length > 1);
   const ids = new Set();
   for (const r of pri.rows.concat(rest.rows)) {
     assert.equal(ids.has(r[ROW.ID]), false, r[ROW.ID]);
@@ -229,4 +262,5 @@ test("the committed split is a pure re-partition of data.json", () => {
   // WHY 16 MB: the artifact that hosts the page refuses a larger file.
   const MAX_FILE_BYTES = 16 * 1024 * 1024;
   for (const f of [FULL_FILE, PRIORITY_FILE, REST_FILE]) assert.ok(statSync(f).size < MAX_FILE_BYTES, f);
+  assert.ok(statSync(PRIORITY_FILE).size <= PRIORITY_MAX_BYTES, statSync(PRIORITY_FILE).size);
 });

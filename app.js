@@ -4,7 +4,7 @@ import { initAgent } from "./agent.js?v=5";
 import { initPortal } from "./portal.js?v=6";
 import { initGrants } from "./grants.js?v=1";
 import { countyOf } from "./florida.js?v=1";
-import { FIRST_PAINT_DAYS, REST_FILE, loadSnapshot, coveredByFirstPaint } from "./snapshot.js?v=2";
+import { loadSnapshot, coveredByFirstPaint, mapPresetApplies } from "./snapshot.js?v=3";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -68,6 +68,7 @@ const F = { ID: 0, TITLE: 1, DEPT: 2, TYPE: 3, SA: 4, DUE: 5, NAICS: 6, STATE: 7
 const V = { NAME: 0, CITY: 1, STATE: 2, AWARDS: 3, AVG: 4, LAST: 5, REL: 6, EMAIL: 7, PHONE: 8, DOMAIN: 9 };
 let VENDORS = {};
 let META = null, ROWS = [], HAY = [];
+let MAP_PRESET = null;
 let D;
 let dataComplete = false;
 let builtOn = "";
@@ -79,17 +80,23 @@ const fetchJson = async (file) => {
 };
 
 $("#pill-data").textContent = "loading…";
-// WHY: vendors load alongside the notices, not after. Cards rendered before the
-// vendor list arrived never got a "Find companies" button. The rest of the
-// snapshot downloads with the priority file and merges after the first paint,
-// so Florida and the next 90 days are not stuck behind the whole country.
+// WHY: vendors load alongside the priority file, not after it. The rest of the
+// country is most of the bytes, so that download waits until the tiles are up
+// and does not share a slow connection with the first paint. Cards are built
+// only after the vendor list arrives, or they never get a "Find companies" button.
 const vendorsP = fetch("./vendors.json").then((r) => r.json()).catch(() => ({}));
-// Download the rest now, but leave its body unparsed until after the first paint.
-const loaded = await loadSnapshot(fetchJson, () => fetch("./" + REST_FILE).then((res) => (res.ok ? res : null), () => null));
-const vendors = await vendorsP;
+let loaded;
+try {
+  loaded = await loadSnapshot(fetchJson);
+} catch {
+  $("#pill-data").textContent = "Could not load contracts";
+  $("#tiles").innerHTML = '<div class="empty">The contract list did not load. Refresh the page to try again.</div>';
+  throw new Error("priority snapshot failed");
+}
 META = loaded.priority.meta;
 ROWS = loaded.priority.rows;
-VENDORS = vendors;
+MAP_PRESET = loaded.priority.map || null;
+VENDORS = {};
 dataComplete = loaded.complete;
 D = META.dicts;
 NAICS_NAME = META.naics_names || {};
@@ -105,7 +112,7 @@ for (const r of ROWS) addHay(r);
 function showDataStatus() {
   $("#pill-data").textContent = dataComplete
     ? `${countOpen(ROWS, F.DUE, localISODate()).toLocaleString()} open · data from ${builtOn}`
-    : `Florida and the next ${FIRST_PAINT_DAYS} days · loading the rest`;
+    : "Florida · loading the rest of the country";
   $("#about-built").textContent = `Snapshot of ${META.total.toLocaleString()} open notices, built ${new Date(META.built_at).toLocaleString()}.`;
 }
 showDataStatus();
@@ -210,11 +217,11 @@ function renderDashboard() {
   const filterDays = Number($("#d-days").value) || 0;
   const rows = filtered({ state: $("#d-state").value, src: $("#d-source").value, sa: $("#d-setaside").value, days: filterDays });
   const scope = $("#d-state").value ? `in ${stateName($("#d-state").value)}` : "nationwide";
-  // A view is covered when every row it can show is already in memory. Florida
-  // is. A deadline window is, when it ends inside the priority file's window.
+  // Florida and the two local sources are entirely in the first file. Any other
+  // place is not, so an uncovered count stays unmarked instead of reading as zero.
   const cover = { complete: dataComplete, snapshotToday: META.today, userToday: localISODate(), source: $("#d-source").value };
-  const tilesCovered = coveredByFirstPaint({ ...cover, state: $("#d-state").value, days: filterDays });
-  const soonCovered = coveredByFirstPaint({ ...cover, state: $("#d-state").value, days: 7 });
+  const tilesCovered = coveredByFirstPaint({ ...cover, state: $("#d-state").value });
+  const soonCovered = coveredByFirstPaint({ ...cover, state: $("#d-state").value });
   const soon = rows.filter((r) => daysLeft(r[F.DUE]) <= 7).length;
   const small = rows.filter((r) => setaside(r)).length;
   const months = recentMonths(META.awards_by_month, 12);
@@ -222,9 +229,9 @@ function renderDashboard() {
   const bySrc = tally(rows, source);
   const matchSub = bySrc.length > 1 ? bySrc.map((x) => `${x.value.toLocaleString()} ${sourceLabel(x.label).replace(/ \(.*\)/, "")}`).join(" · ") : `open notices ${scope}`;
   $("#tiles").innerHTML = [
-    [tilesCovered ? "Matching your filters" : "Matching so far", rows.length.toLocaleString(), tilesCovered ? matchSub : "notices due later are still loading"],
+    ["Matching your filters", tilesCovered ? rows.length.toLocaleString() : "…", tilesCovered ? matchSub : "the rest of the country is still loading"],
     ["Closing this week", soonCovered ? soon.toLocaleString() : "…", soonCovered ? `deadlines within 7 days ${scope}` : "still loading"],
-    ["Reserved for small business", tilesCovered ? small.toLocaleString() : "…", tilesCovered ? `of ${rows.length.toLocaleString()} shown` : "still loading notices due later"],
+    ["Reserved for small business", tilesCovered ? small.toLocaleString() : "…", tilesCovered ? `of ${rows.length.toLocaleString()} shown` : "still loading"],
     ["Awarded, last 12 months", usd(awards12), `${months.reduce((a, b) => a + b.value, 0).toLocaleString()} contracts on record`],
   ].map(([l, v, s]) => `<div class="card tile"><div class="label">${l}</div><div class="value">${v}</div><div class="sub">${s}</div></div>`).join("");
 
@@ -235,51 +242,86 @@ function renderDashboard() {
   // ---- heatmaps: where the work is, and which days are crowded ----
   const heat = $("#heat"); heat.innerHTML = "";
   const st = $("#d-state").value;
+  const src = $("#d-source").value;
+  const sa = $("#d-setaside").value;
   // The map always shows every state (ignoring the state filter) so you can compare;
-  // the selected state is outlined.
-  const mapRows = st ? filtered({ src: $("#d-source").value, sa: $("#d-setaside").value, days: Number($("#d-days").value) || 0 }) : rows;
-  const byState = {}, soonByState = {};
-  for (const r of mapRows) if (STATE_NAME[r[F.STATE]]) {
-    byState[r[F.STATE]] = (byState[r[F.STATE]] || 0) + 1;
-    if (daysLeft(r[F.DUE]) <= 7) soonByState[r[F.STATE]] = (soonByState[r[F.STATE]] || 0) + 1;
-  }
-  const notes = Object.fromEntries(Object.entries(soonByState).map(([k, v]) => [k, `${v} closing this week`]));
-  // Florida first: the county map uses every Florida row under the current filters,
-  // whatever the state filter says.
-  const flRows = (st ? mapRows : rows).filter((r) => r[F.STATE] === "FL");
+  // the selected state is outlined. Before the rest arrives, only the default
+  // 30-day window has real national counts, carried in the priority file.
+  const presetOn = mapPresetApplies({
+    days: filterDays, source: src, setaside: sa, complete: dataComplete,
+    snapshotToday: META.today, userToday: localISODate(), preset: MAP_PRESET,
+  });
+  // A local source is entirely in the first file, so its national map is real.
+  const sourceCovered = coveredByFirstPaint({ complete: dataComplete, source: src });
+  const mapCovered = dataComplete || presetOn || sourceCovered;
+  const mapRows = (dataComplete || sourceCovered)
+    ? (st ? filtered({ src, sa, days: filterDays }) : rows)
+    : [];
+  // Florida first: every Florida row is in the first file, so the county map is
+  // exact under the current filters before the rest of the country arrives.
+  const flSource = dataComplete ? mapRows : filtered({ state: "FL", src, sa, days: filterDays });
+  const flRows = flSource.filter((r) => r[F.STATE] === "FL");
   const byCounty = {};
   for (const r of flRows) { const c = countyOf(r[F.CITY], source(r)); if (c) byCounty[c] = (byCounty[c] || 0) + 1; }
   const miami = byCounty["Miami-Dade"] || 0;
   add("Florida, county by county", `${flRows.length.toLocaleString()} open in Florida, ${miami} in Miami-Dade (outlined). Military bases put the Panhandle and Space Coast on the map.`, (el) =>
     floridaMap(el, byCounty, { selected: "Miami-Dade", ariaLabel: "Open notices by Florida county" }), heat);
-  const byDay = {};
-  for (const r of rows) byDay[r[F.DUE]] = (byDay[r[F.DUE]] || 0) + 1;
-  const days = filterDays || 90;
-  const busiest = Object.entries(byDay).sort((a, b) => b[1] - a[1])[0];
-  const calendarNote = tilesCovered ? "" : " Notices due later are still loading.";
-  add("Deadline calendar", busiest ? `Darker days have more bids due. Busiest: ${new Date(busiest[0] + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}, with ${busiest[1]} due.${calendarNote}` : "No deadlines in this window.", (el) =>
-    calendarHeat(el, byDay, { start: localISODate(), today: localISODate(), weeks: Math.min(13, Math.ceil(days / 7) + 1) }), heat);
-
-  const mapCovered = coveredByFirstPaint({ ...cover, state: "", days: filterDays });
-  add("Where the work is nationally", mapCovered
-    ? (st ? `${stateName(st)} outlined. Click another state to switch, or the same one to clear.` : "Open notices by place of performance. Click a state to focus the dashboard on it.")
-    : "Notices due later are still loading, so a state can still gain bids.", (el) =>
-    stateMap(el, byState, { selected: st, names: STATE_NAME, notes, onClick: (code) => { $("#d-state").value = code === st ? "" : code; renderDashboard(); } }));
-
-  const weeks = new Map();
-  for (const r of rows) {
-    const d = new Date(r[F.DUE] + "T12:00:00"); d.setDate(d.getDate() - d.getDay());
-    const k = localISODate(d);
-    weeks.set(k, (weeks.get(k) || 0) + 1);
+  if (tilesCovered) {
+    const byDay = {};
+    for (const r of rows) byDay[r[F.DUE]] = (byDay[r[F.DUE]] || 0) + 1;
+    const days = filterDays || 90;
+    const busiest = Object.entries(byDay).sort((a, b) => b[1] - a[1])[0];
+    add("Deadline calendar", busiest ? `Darker days have more bids due. Busiest: ${new Date(busiest[0] + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}, with ${busiest[1]} due.` : "No deadlines in this window.", (el) =>
+      calendarHeat(el, byDay, { start: localISODate(), today: localISODate(), weeks: Math.min(13, Math.ceil(days / 7) + 1) }), heat);
   }
-  const wk = [...weeks].sort().slice(0, 9).map(([label, value]) => ({ label, value, short: label.slice(5).replace("-", "/"), full: "Week of " + label }));
-  add("When the deadlines land", "Open notices by response week. Tall bars are crowded weeks.", (el) => vbar(el, wk));
-  add("Who is buying", "Top agencies posting notices that match your filters.", (el) =>
-    hbar(el, tally(rows, dept).slice(0, 10).map((d) => ({ ...d, label: agencyName(d.label) })), { onClick: (d) => jump({ dept: tally(rows, dept).find((x) => agencyName(x.label) === d.label).label }) }));
-  add("Who is allowed to bid", "Set-aside status. Anything but “Open to all” restricts bidders to certified firms.", (el) =>
-    hbar(el, tally(rows, (r) => setaside(r) || "Open to all").slice(0, 8).map((d) => ({ ...d, label: d.label.replace(/\s*\(FAR[^)]*\)/, "").replace(" Set-Aside", "").replace(" Set Aside - Total", "") }))));
-  add("What gets bought most", "NAICS industry codes, the government's industry classification.", (el) =>
-    hbar(el, tally(rows, (r) => r[F.NAICS]).slice(0, 10).map((d) => ({ ...d, code: d.label, label: naicsLabel(d.label) })), { onClick: (d) => jump({ q: d.code }) }));
+
+  const byState = {}, soonByState = {};
+  if (presetOn) {
+    for (const [k, v] of Object.entries(MAP_PRESET.byState || {})) if (STATE_NAME[k]) byState[k] = v;
+    for (const [k, v] of Object.entries(MAP_PRESET.soonByState || {})) if (STATE_NAME[k]) soonByState[k] = v;
+  } else if (dataComplete || sourceCovered) {
+    for (const r of mapRows) if (STATE_NAME[r[F.STATE]]) {
+      byState[r[F.STATE]] = (byState[r[F.STATE]] || 0) + 1;
+      if (daysLeft(r[F.DUE]) <= 7) soonByState[r[F.STATE]] = (soonByState[r[F.STATE]] || 0) + 1;
+    }
+  }
+  const notes = Object.fromEntries(Object.entries(soonByState).map(([k, v]) => [k, `${v} closing this week`]));
+  const mapSub = !mapCovered
+    ? "The rest of the country is still loading, so this map waits."
+    : (presetOn
+      ? `${st ? stateName(st) + " outlined. " : ""}Counts for the default 30-day window. Other states can be selected once the rest has loaded.`
+      : (st ? `${stateName(st)} outlined. Click another state to switch, or the same one to clear.` : "Open notices by place of performance. Click a state to focus the dashboard on it."));
+  add("Where the work is nationally", mapSub, (el) => {
+    if (!mapCovered) { el.innerHTML = '<div class="empty">National counts load with the rest of the notices.</div>'; return; }
+    stateMap(el, byState, { selected: st, names: STATE_NAME, notes, onClick: (code) => {
+      const next = code === st ? "" : code;
+      const sel = $("#d-state");
+      if (next && ![...sel.options].some((o) => o.value === next)) return;
+      sel.value = next;
+      renderDashboard();
+    } });
+  });
+
+  if (tilesCovered) {
+    const weeks = new Map();
+    for (const r of rows) {
+      const d = new Date(r[F.DUE] + "T12:00:00"); d.setDate(d.getDate() - d.getDay());
+      const k = localISODate(d);
+      weeks.set(k, (weeks.get(k) || 0) + 1);
+    }
+    const wk = [...weeks].sort().slice(0, 9).map(([label, value]) => ({ label, value, short: label.slice(5).replace("-", "/"), full: "Week of " + label }));
+    add("When the deadlines land", "Open notices by response week. Tall bars are crowded weeks.", (el) => vbar(el, wk));
+    add("Who is buying", "Top agencies posting notices that match your filters.", (el) =>
+      hbar(el, tally(rows, dept).slice(0, 10).map((d) => ({ ...d, label: agencyName(d.label) })), { onClick: (d) => jump({ dept: tally(rows, dept).find((x) => agencyName(x.label) === d.label).label }) }));
+    add("Who is allowed to bid", "Set-aside status. Anything but “Open to all” restricts bidders to certified firms.", (el) =>
+      hbar(el, tally(rows, (r) => setaside(r) || "Open to all").slice(0, 8).map((d) => ({ ...d, label: d.label.replace(/\s*\(FAR[^)]*\)/, "").replace(" Set-Aside", "").replace(" Set Aside - Total", "") }))));
+    add("What gets bought most", "NAICS industry codes, the government's industry classification.", (el) =>
+      hbar(el, tally(rows, (r) => r[F.NAICS]).slice(0, 10).map((d) => ({ ...d, code: d.label, label: naicsLabel(d.label) })), { onClick: (d) => jump({ q: d.code }) }));
+  } else {
+    add("Nationwide breakdown", "These charts wait until the rest of the country has loaded.", (el) => {
+      el.innerHTML = '<div class="empty">Notices outside this view are still loading.</div>';
+    });
+  }
   // When the newest month dwarfs the rest, the jump is record collection, not spending.
   // Say so instead of letting the line imply a boom.
   const awardsSub = coverageSkewed(months)
@@ -343,7 +385,7 @@ function runSearch(p = 1) {
   const shown = Math.min(p * 25, hits.length).toLocaleString();
   $("#s-count").textContent = searchCovered
     ? `${hits.length.toLocaleString()} notices — showing ${shown}`
-    : `${hits.length.toLocaleString()} notices so far — showing ${shown}. Deadlines past ${FIRST_PAINT_DAYS} days are still loading`;
+    : `${hits.length.toLocaleString()} notices so far — showing ${shown}. The rest of the country is still loading`;
   host.insertAdjacentHTML("beforeend", slice.map(oppCard).join(""));
   host.querySelectorAll(".opp").forEach((c) => c.onclick = () => openDetail(c.dataset.id));
   host.querySelectorAll(".find-co").forEach((b) => b.onclick = (e) => { e.stopPropagation(); openVendors(b.dataset.id); });
@@ -703,6 +745,9 @@ addEventListener("keydown", (e) => {
 });
 
 // Florida is home: the dashboard opens on it. "All states" is one click away.
+// The vendor list shares the first fetch. The rest of the country does not:
+// that download starts after these tiles, so it cannot take the pipe.
+VENDORS = await vendorsP;
 $("#d-state").value = "FL";
 renderDashboard();
 
@@ -781,7 +826,11 @@ function adoptFull(full) {
   }
 }
 // Parse the rest only after the dashboard has drawn.
+// The rest file starts here, after the tiles exist, so it does not compete with
+// the priority file. The agent reads totals off the rows it is given, so it
+// starts only once the merge is whole.
 loaded.finish().then((full) => {
   if (full?.complete && !dataComplete) adoptFull(full);
-  else startAgent();
+  else if (dataComplete) startAgent();
+  else $("#agent-status").textContent = "The rest of the contracts did not load. Refresh to try again.";
 });

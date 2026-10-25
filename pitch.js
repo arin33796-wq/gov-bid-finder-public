@@ -1,7 +1,7 @@
 import { floridaMap, fmt, usd } from "./charts.js?v=8";
 import { countyOf } from "./florida.js?v=1";
 import { localISODate, addDaysISO, countOpen, liveRenewals } from "./lib.js?v=3";
-import { REST_FILE, loadSnapshot } from "./snapshot.js?v=2";
+import { loadSnapshot } from "./snapshot.js?v=3";
 
 // ---- slide navigation ----
 const slides = [...document.querySelectorAll(".slide")];
@@ -49,7 +49,7 @@ const [renewals, vendors, grantsFile, snap] = await Promise.all([
   fetch("./renewals.json").then((r) => r.json()).catch(() => []),
   fetch("./vendors.json").then((r) => r.json()).catch(() => ({})),
   fetch("./grants.json").then((r) => r.json()).catch(() => ({ grants: [] })),
-  loadSnapshot(fetchJson, () => fetch("./" + REST_FILE).then((res) => (res.ok ? res : null), () => null)),
+  loadSnapshot(fetchJson).catch(() => null),
 ]);
 
 // R.END = 1, R.AMT = 2, R.STATE = 5 in renewals.json (see R in app.js).
@@ -61,8 +61,8 @@ setStat("flRenewCount", flRenew.length.toLocaleString());
 const companies = new Set();
 for (const list of Object.values(vendors)) for (const v of list) companies.add(v[0]);
 setStat("companies", fmt(companies.size));
-setStat("awards", fmt(snap.priority.meta.awards_by_month.reduce((a, m) => a + m.value, 0)));
 setStat("grants", grantsFile.grants.filter((g) => !g.closes || g.closes >= today).length.toLocaleString());
+if (snap) setStat("awards", fmt(snap.priority.meta.awards_by_month.reduce((a, m) => a + m.value, 0)));
 
 const CITY = 8;
 // Florida figures are complete in the priority file. The nationwide open count
@@ -83,8 +83,10 @@ function paintContracts(data, totals) {
   }
   if (slides[at].querySelector("#deck-map")) drawMap();
 }
-paintContracts(snap.priority, snap.complete);
-if (!snap.complete) {
-  const full = await snap.finish();
-  if (full.complete) paintContracts(full, true);
+if (snap) {
+  paintContracts(snap.priority, snap.complete);
+  if (!snap.complete) {
+    const full = await snap.finish();
+    if (full.complete) paintContracts(full, true);
+  }
 }
